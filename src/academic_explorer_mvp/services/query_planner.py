@@ -1,7 +1,5 @@
 """Query planning powered by the local model."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from academic_explorer_mvp.domain.context import SearchContext

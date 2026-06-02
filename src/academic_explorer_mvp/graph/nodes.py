@@ -1,7 +1,5 @@
 """LangGraph nodes for the explicit MVP flow."""
 
-from __future__ import annotations
-
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.services.deduplicator import PaperDeduplicator

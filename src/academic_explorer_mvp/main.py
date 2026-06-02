@@ -1,7 +1,5 @@
 """CLI entry point for the Academic Explorer MVP."""
 
-from __future__ import annotations
-
 import argparse
 import sys
 

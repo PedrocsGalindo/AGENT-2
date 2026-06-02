@@ -42,10 +42,7 @@ O feedback humano nao foi implementado. O ponto previsto para depois e:
 rank_papers -> ask_feedback -> apply_feedback -> decide_next_step
 ```
 
-## Windows e Python
-
-Neste ambiente, `python` pode abrir o alias da Microsoft Store em vez do Python
-real. Use o Python Launcher para Windows:
+## Ambiente
 
 ```powershell
 py -m venv .venv
@@ -57,6 +54,14 @@ python -m pip install --use-feature=truststore -e ".[local-model]"
 py -m compileall src\academic_explorer_mvp
 py -m academic_explorer_mvp.main --query "audio violence detection" --min-year 2020 --max-rounds 1 --limit 5
 ```
+
+### Execucao validada
+
+O fluxo completo roda com LangGraph, modelo local, OpenAlex, normalizacao,
+deduplicacao, ranking e `stop_reason`. O Semantic Scholar pode responder HTTP
+429 sem chave/API quota; nesse caso o erro aparece no resumo e o fluxo continua
+com os resultados disponiveis dos outros providers.
+
 ## Variaveis de ambiente (.env)
 Para uma validacao inicial, use um modelo pequeno:
 ```bash
@@ -77,33 +82,6 @@ para queries iniciais, refinamento e decisao de continuidade. Se `transformers`,
 `torch`, `accelerate`, o modelo configurado, memoria, device map ou cache local
 nao estiverem corretos, o CLI para com mensagem didatica.
 
-## Execucao validada
-
-Sequencia usada no Windows:
-
-```powershell
-py -m venv .venv
-.venv\Scripts\python -m pip install --use-feature=truststore --upgrade pip setuptools wheel certifi
-.venv\Scripts\python -m pip install -e .
-.venv\Scripts\python -m pip install -e ".[local-model]"
-$env:ACADEMIC_EXPLORER_AGENT_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-$env:ACADEMIC_EXPLORER_AGENT_MAX_NEW_TOKENS = "128"
-$env:ACADEMIC_EXPLORER_AGENT_TEMPERATURE = "0.0"
-.venv\Scripts\python -m academic_explorer_mvp.main --query "audio violence detection" --min-year 2020 --max-rounds 1 --limit 5
-```
-
-Validacoes locais:
-
-```powershell
-.venv\Scripts\python -m compileall src\academic_explorer_mvp
-.venv\Scripts\python -m unittest discover -s tests
-.venv\Scripts\python -m academic_explorer_mvp.main --query "audio violence detection" --min-year 2020 --max-rounds 1 --limit 5
-```
-
-O fluxo completo rodou com LangGraph, modelo local, OpenAlex, normalizacao,
-deduplicacao, ranking e `stop_reason`. O Semantic Scholar pode responder HTTP
-429 sem chave/API quota; nesse caso o erro aparece no resumo e o fluxo continua
-com os resultados disponiveis dos outros providers.
 
 ## Limitacoes atuais
 

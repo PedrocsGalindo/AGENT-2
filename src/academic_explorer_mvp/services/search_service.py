@@ -1,7 +1,5 @@
 """Search service that calls academic providers."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 from academic_explorer_mvp.domain.paper import RawPaper

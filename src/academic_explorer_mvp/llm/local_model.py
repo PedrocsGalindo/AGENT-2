@@ -1,6 +1,6 @@
 """Thin local model wrapper backed by transformers."""
 
-from __future__ import annotations
+
 
 from importlib.util import find_spec
 import json

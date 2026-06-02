@@ -1,7 +1,5 @@
 """Search context created from CLI input."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

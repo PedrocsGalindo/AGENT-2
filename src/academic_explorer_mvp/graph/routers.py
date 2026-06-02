@@ -1,7 +1,3 @@
-"""Routing helpers for LangGraph."""
-
-from __future__ import annotations
-
 from academic_explorer_mvp.domain.state import SearchState
 
 

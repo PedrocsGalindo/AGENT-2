@@ -1,7 +1,5 @@
 """Simple deterministic deduplication."""
 
-from __future__ import annotations
-
 import re
 
 from academic_explorer_mvp.domain.paper import Paper

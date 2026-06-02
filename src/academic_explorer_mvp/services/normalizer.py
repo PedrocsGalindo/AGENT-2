@@ -1,7 +1,5 @@
 """Normalize provider payloads into the MVP Paper shape."""
 
-from __future__ import annotations
-
 import hashlib
 from typing import Any
 

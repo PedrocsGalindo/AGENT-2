@@ -1,6 +1,6 @@
 """Provider protocol for academic search APIs."""
 
-from __future__ import annotations
+
 
 from typing import Protocol
 

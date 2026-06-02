@@ -1,6 +1,6 @@
 """Semantic Scholar provider implemented directly for the MVP."""
 
-from __future__ import annotations
+
 
 import json
 from urllib.error import HTTPError, URLError

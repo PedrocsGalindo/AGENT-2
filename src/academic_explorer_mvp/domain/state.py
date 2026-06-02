@@ -1,7 +1,5 @@
 """Typed state passed through LangGraph."""
 
-from __future__ import annotations
-
 from typing import TypedDict
 
 from academic_explorer_mvp.domain.context import SearchContext

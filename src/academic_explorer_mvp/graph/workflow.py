@@ -1,7 +1,5 @@
 """Build and run the LangGraph search workflow."""
 
-from __future__ import annotations
-
 from academic_explorer_mvp.config import AppConfig
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
