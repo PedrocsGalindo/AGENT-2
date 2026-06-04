@@ -1,5 +1,10 @@
 # Academic Explorer MVP
 
+## To do 
+- enrich initial query 
+- review the number os papers the model get
+- review with information of the paper the model recives 
+
 ## Arquitetura
 
 ```text

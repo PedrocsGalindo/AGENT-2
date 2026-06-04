@@ -26,3 +26,4 @@ class SearchState(TypedDict, total=False):
     provider_errors: list[str]
     stop_reason: str | None
     model_continue_reason: str | None
+    query_enrichment: dict[str, object]

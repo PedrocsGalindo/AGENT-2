@@ -6,7 +6,7 @@ import sys
 from academic_explorer_mvp.config import load_config
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
-from academic_explorer_mvp.graph.workflow import run_graph
+from academic_explorer_mvp.graph.workflow import run_interactive_graph
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,7 +35,7 @@ def main() -> None:
     )
 
     try:
-        final_state = run_graph(context=context, config=load_config())
+        final_state = run_interactive_graph(context=context, config=load_config())
     except RuntimeError as exc:
         print(f"[erro] {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

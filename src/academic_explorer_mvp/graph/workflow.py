@@ -43,9 +43,19 @@ def build_graph(config: AppConfig):
     normalizer = PaperNormalizer()
     deduplicator = PaperDeduplicator()
     ranker = PaperRanker()
-
     graph = StateGraph(SearchState)
+
     graph.add_node("initialize_context", nodes.initialize_context)
+    graph.add_node("assess_initial_query", lambda state: nodes.assess_initial_query(state, planner))
+    graph.add_node(
+        "rewrite_user_query_after_clarification",
+        lambda state: nodes.rewrite_user_query_after_clarification(state, planner),
+    )
+    graph.add_node(
+        "handle_query_confirmation_or_revision",
+        lambda state: nodes.handle_query_confirmation_or_revision(state, planner),
+    )
+    graph.add_node("commit_enriched_query", nodes.commit_enriched_query)
     graph.add_node("plan_queries", lambda state: nodes.plan_queries(state, planner))
     graph.add_node("search_papers", lambda state: nodes.search_papers(state, search_service))
     graph.add_node("normalize_papers", lambda state: nodes.normalize_papers(state, normalizer))
@@ -55,7 +65,35 @@ def build_graph(config: AppConfig):
     graph.add_node("finalize", nodes.finalize)
 
     graph.set_entry_point("initialize_context")
-    graph.add_edge("initialize_context", "plan_queries")
+    graph.add_conditional_edges(
+        "initialize_context",
+        nodes.route_after_context_initialization,
+        {
+            "assess_initial_query": "assess_initial_query",
+            "rewrite_user_query_after_clarification": "rewrite_user_query_after_clarification",
+            "handle_query_confirmation_or_revision": "handle_query_confirmation_or_revision",
+            "finalize": "finalize",
+        },
+    )
+    graph.add_conditional_edges(
+        "assess_initial_query",
+        nodes.route_after_initial_assessment,
+        {
+            "ready_to_search": "plan_queries",
+            "needs_clarification": "finalize",
+        },
+    )
+    graph.add_edge("rewrite_user_query_after_clarification", "finalize")
+    graph.add_conditional_edges(
+        "handle_query_confirmation_or_revision",
+        nodes.route_after_query_confirmation,
+        {
+            "commit_query": "commit_enriched_query",
+            "wait_for_user": "finalize",
+        },
+    )
+    graph.add_edge("commit_enriched_query", "assess_initial_query")
+
     graph.add_edge("plan_queries", "search_papers")
     graph.add_edge("search_papers", "normalize_papers")
     graph.add_edge("normalize_papers", "deduplicate_papers")
@@ -73,9 +111,71 @@ def build_graph(config: AppConfig):
     return graph.compile()
 
 
-def run_graph(context: SearchContext, config: AppConfig) -> SearchState:
-    """Run the workflow for one CLI request."""
+## INTERACTION WITH USER 
+
+def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchState:
+    """Run the workflow interactively from the CLI."""
 
     graph = build_graph(config)
-    initial_state: SearchState = {"context": context}
-    return graph.invoke(initial_state)
+    state: SearchState = {"context": context}
+
+    while True:
+        state = graph.invoke(state)
+
+        enrichment = state.get("query_enrichment", {}) or {}
+        stage = enrichment.get("stage")
+
+        if stage == "awaiting_clarification_answer":
+            question = enrichment.get("question")
+            reason = enrichment.get("reason")
+
+            print("\nPreciso de uma clarificação antes de buscar.")
+            if question:
+                print(f"\nPergunta: {question}")
+            if reason:
+                print(f"Motivo: {reason}")
+            answer = input("\nSua resposta: ").strip()
+            while not answer:
+                answer = input("Digite uma resposta: ").strip()
+
+            state = _update_query_enrichment(
+                state,
+                answer=answer,
+            )
+
+            state["stop_reason"] = None
+            continue
+
+        if stage in {"awaiting_query_confirmation", "unclear_confirmation"}:
+            message = enrichment.get("message")
+
+            if message:
+                print("\n" + message)
+            else:
+                print('\nResponda "sim" para aceitar ou escreva uma versão melhor.')
+
+            answer = input("\nSua resposta: ").strip()
+
+            while not answer:
+                answer = input('Responda "sim" ou escreva uma versão melhor: ').strip()
+
+            state = _update_query_enrichment(
+                state,
+                confirmation_answer=answer,
+            )
+
+            state["stop_reason"] = None
+            continue
+
+        return state
+    
+def _update_query_enrichment(state: SearchState, **updates: object) -> SearchState:
+    """Return a copied state with updated query enrichment data."""
+
+    new_state: SearchState = dict(state)
+
+    enrichment = dict(new_state.get("query_enrichment", {}) or {})
+    enrichment.update(updates)
+
+    new_state["query_enrichment"] = enrichment
+    return new_state
