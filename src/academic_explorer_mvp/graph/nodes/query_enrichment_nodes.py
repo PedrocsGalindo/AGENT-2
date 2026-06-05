@@ -256,7 +256,6 @@ def _rewrite_from_user_revision(
         confirmation_status="revised",
         user_revision=None,
         message=message,
-        can_search=rewrite.can_search,
     )
     new_state["stop_reason"] = "awaiting query confirmation"
     return new_state
