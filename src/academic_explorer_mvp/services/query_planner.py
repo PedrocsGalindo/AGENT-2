@@ -7,8 +7,9 @@ from academic_explorer_mvp.domain.paper import RankedPaper
 from academic_explorer_mvp.llm.local_model import LocalModel, LocalModelError
 from academic_explorer_mvp.llm.prompts import (
     PromptSpec,
+    build_assess_query_context_prompt,
+    build_context_question_prompt,
     build_continue_decision_prompt,
-    build_enrich_query_prompt,
     build_initial_queries_prompt,
     build_refine_queries_prompt,
     build_rewrite_from_user_revision_prompt,
@@ -22,6 +23,22 @@ class QueryAssessment:
 
     can_search: bool
     question: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
+class QueryContextAssessment:
+    """Model assessment of whether the query has enough context."""
+
+    has_enough_context: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class ContextQuestion:
+    """Model-generated clarification question."""
+
+    question: str
     reason: str
 
 
@@ -48,30 +65,77 @@ class QueryPlanner:
         self.model = model
         self.max_queries_per_round = max_queries_per_round
 
-    def assess_initial_query(self, context: SearchContext) -> QueryAssessment:
-        """Ask the local model if the user's topic is ready for search."""
+    def assess_query_context(self, context: SearchContext) -> QueryContextAssessment:
+        """Ask the local model whether the user's topic has enough context."""
 
         payload = self._expect_dict(
-            "initial query assessment",
+            "query context assessment",
             self._generate_json(
-                "initial query assessment",
-                build_enrich_query_prompt(context),
+                "query context assessment",
+                build_assess_query_context_prompt(context),
             ),
         )
 
-        can_search = self._required_bool(payload, "can_search", "initial query assessment")
-        question = self._optional_string(payload, "question")
+        has_enough_context = self._required_bool(
+            payload,
+            "has_enough_context",
+            "query context assessment",
+        )
         reason = self._optional_string(payload, "reason") or "model did not provide a reason"
 
-        if not can_search and not question:
-            raise RuntimeError(
-                "Initial query assessment requires `question` when `can_search` is false."
+        return QueryContextAssessment(
+            has_enough_context=has_enough_context,
+            reason=reason,
+        )
+
+    def generate_context_question(
+        self,
+        user_query: str,
+        reason: str,
+    ) -> ContextQuestion:
+        """Ask the local model for one clarification question with options."""
+
+        payload = self._expect_dict(
+            "context question generation",
+            self._generate_json(
+                "context question generation",
+                build_context_question_prompt(
+                    user_query=user_query,
+                    reason=reason,
+                ),
+            ),
+        )
+
+        question = self._required_string(
+            payload,
+            "question",
+            "context question generation",
+        )
+
+        return ContextQuestion(
+            question=question,
+            reason=self._optional_string(payload, "reason") or "model did not provide a reason",
+        )
+
+    def assess_initial_query(self, context: SearchContext) -> QueryAssessment:
+        """Compatibility wrapper for the split query-context flow."""
+
+        assessment = self.assess_query_context(context)
+        if assessment.has_enough_context:
+            return QueryAssessment(
+                can_search=True,
+                question=None,
+                reason=assessment.reason,
             )
 
+        question = self.generate_context_question(
+            user_query=context.user_query,
+            reason=assessment.reason,
+        )
         return QueryAssessment(
-            can_search=can_search,
-            question=None if can_search else question,
-            reason=reason,
+            can_search=False,
+            question=question.question,
+            reason=question.reason,
         )
 
     def rewrite_user_query(

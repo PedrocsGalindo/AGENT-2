@@ -7,7 +7,7 @@ from academic_explorer_mvp.domain.state import SearchState
 QUERY_ENRICHMENT_DEFAULTS: dict[str, object] = {
     "stage": "idle",
     "original_query": None,
-    "can_search": None,
+    "has_enough_context": None,
     "question": None,
     "reason": None,
     "answer": None,

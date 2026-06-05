@@ -18,96 +18,182 @@ class PromptSpec:
         return f"{self.name}@{self.version}"
 
 
-INITIAL_QUERIES_PROMPT_VERSION = "1.0.2"
+INITIAL_QUERIES_PROMPT_VERSION = "1.0.3"
 REFINE_QUERIES_PROMPT_VERSION = "1.0.0"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.0"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
+ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.0.0"
+CONTEXT_QUESTION_PROMPT_VERSION = "1.0.0"
 REWRITE_USER_QUERY_PROMPT_VERSION = "1.0.0"
 REWRITE_FROM_USER_REVISION_PROMPT_VERSION = "1.0.0"
 
-def build_enrich_query_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for assessing whether the user's topic needs clarification."""
+
+def build_assess_query_context_prompt(context: SearchContext) -> PromptSpec:
+    """Prompt for deciding whether the query has enough search context."""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
 You are preparing an academic paper search.
 
-Your task is to decide whether the user's intent is clear enough to start the search,
-or whether one clarification question should be asked first.
+Task:
+Decide whether the user's query has enough context to start building useful academic search queries.
+
+Important:
+Do not generate a clarification question here.
+Only assess whether the query is clear enough.
 
 Core rule:
 A topic being searchable is not enough.
 
-can_search=true means:
-The user's search intention is clear enough to generate useful academic search queries.
+Use has_enough_context=true when:
+- the user explicitly asks for a review, survey, overview, introduction, state of the art, or broad learning;
+- or the query has a clear technical focus, such as a method, dataset, data source, application, modality, restriction, comparison, metric, or specific research problem.
 
-can_search=false means:
-The query is broad or ambiguous, and one clarification question would help define the search direction.
+Use has_enough_context=false when:
+- the query is broad and the user did not say whether they want an overview or a specific focus;
+- the query could lead to very different academic searches depending on missing context;
+- the topic has multiple common meanings and the intended meaning is not clear.
 
-Decision process:
-1. Identify the main topic.
-2. Decide whether the topic is broad or specific.
-3. If the topic is broad, check whether the user explicitly wants a broad search.
-4. If the topic is broad and the user did not explicitly say they want a broad search, use can_search=false.
-5. If the topic is broad but the user clearly wants overview, review, survey, general understanding, or learning the field, use can_search=true.
-6. If the topic includes a clear method, domain, modality, data type, application, restriction, or research focus, use can_search=true.
+Broad/review intent markers include:
+review, survey, overview, literature review, systematic review, introduction,
+state of the art, general overview, revisão, revisão geral, visão geral,
+panorama, estado da arte, de forma geral, no geral, quero aprender,
+quero entender, quero conhecer a área.
+
+Do not include any fields besides has_enough_context and reason.
+
+Examples:
+
+User query: violence detection
+Output:
+{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants a general review or a specific focus such as audio, video, text, or images"}}
+
+User query: violence detection review
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent"}}
+
+User query: audio violence detection
+Output:
+{{"has_enough_context":false,"reason":"the query has a modality, but does not say whether the user wants an overview or a specific focus such as datasets, models, events, or deployment"}}
+
+User query: audio violence detection review
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for a clear modality"}}
+
+User query: stock price prediction using LSTM and news sentiment
+Output:
+{{"has_enough_context":true,"reason":"the query includes task, method, and data source"}}
+
+User query: noisy data in medical image classification
+Output:
+{{"has_enough_context":false,"reason":"the query is relevant, but noise may refer to label noise, image noise, acquisition noise, or robustness"}}
+
+User query: shortcut bias
+Output:
+{{"has_enough_context":false,"reason":"the topic is broad and does not indicate overview intent or application domain"}}
+
+User query:
+{context.user_query}
+
+Required JSON shape when context is missing:
+{{"has_enough_context":false,"reason":"short reason"}}
+
+Required JSON shape when context is enough:
+{{"has_enough_context":true,"reason":"short reason"}}
+"""
+
+    return PromptSpec(
+        name="assess_query_context",
+        version=ASSESS_QUERY_CONTEXT_PROMPT_VERSION,
+        text=text,
+        metadata={
+            "output_format": "json",
+            "purpose": "query_context_assessment",
+        },
+    )
+
+
+def build_context_question_prompt(
+    user_query: str,
+    reason: str,
+) -> PromptSpec:
+    """Prompt for generating one clarification question with domain-specific options."""
+
+    text = f"""Return only one JSON object. No markdown. No explanation.
+
+You are preparing an academic paper search.
+
+Task:
+Generate exactly one useful clarification question for the user's current query.
 
 Important:
-Do not infer that the user wants a broad review just because the query is broad.
-The user must explicitly indicate broad intent.
+Do not reassess whether the query has enough context.
+The assessment was already done.
+Your only task is to ask one question that helps complete the missing context.
 
-Explicit broad intent can appear through meanings like:
-- review
-- survey
-- overview
-- general
-- broad
-- introduction
-- tutorial
-- landscape
-- state of the art
-- literature review
-- systematic review
-- visão geral
-- revisão
-- panorama
-- estado da arte
-- de forma geral
-- no geral
-- introdução
-- quero aprender sobre
-- quero entender
-- quero conhecer a área
-- entender o mundo de
-- entender os nichos
-- explorar a área
+Core rule:
+The question options must be specific to the user's topic.
+Do not reuse options from examples unless they make sense for the current topic.
 
-Broad queries usually need clarification when there is no explicit broad intent.
-Examples of broad queries:
-- stock prediction
-- violence detection
-- medical image classification
-- noisy data
-- shortcut bias
-- sentiment analysis
-- fraud detection
-- recommendation systems
-- fake news detection
-- disease prediction
-- emotion recognition
+Current user query:
+{user_query}
 
-When asking a clarification question:
-- ask only one question;
-- do not ask a generic question;
-- include useful options;
-- help the user choose between broad overview and a specific focus;
-- use the same language as the user when possible;
-- the question must be directly related to the current user query;
-- the question must mention the current topic or terms from the current topic;
-- the question must help discover better academic search terms.
+Reason from previous assessment:
+{reason}
 
-Good clarification question pattern:
-"Você quer uma visão geral/revisão sobre [current topic] ou quer focar em algo mais específico, como [option 1], [option 2], [option 3] ou [option 4]?"
+How to build the question:
+1. Identify the real topic of the query.
+2. Identify the academic/research area of that topic.
+3. Generate options that are natural for that area.
+4. Prefer options that would become useful academic search terms.
+5. Ask one question only.
+
+Option guidance by topic type:
+- For stock prediction, finance, market forecasting, or asset prediction:
+  use options such as method, asset type, time horizon, data source, market, evaluation metrics, or review/overview.
+  Do not ask about audio, video, image, or text unless the query explicitly mentions multimodal data.
+
+- For violence detection:
+  use options such as audio, video, text, images, datasets, models, real-time detection, surveillance, or mobile deployment.
+
+- For medical image classification:
+  use options such as image type, disease, organ, dataset, model, label noise, robustness, or evaluation metrics.
+
+- For noisy data:
+  use options such as label noise, input noise, acquisition noise, outliers, robust training, or uncertainty.
+
+- For shortcut bias:
+  use options such as general overview, computer vision, NLP, medical imaging, dataset bias, spurious correlations, or robustness.
+
+- For recommendation systems:
+  use options such as collaborative filtering, content-based filtering, deep learning, cold start, evaluation metrics, or fairness.
+
+- For fake news detection:
+  use options such as text-based detection, social network propagation, multimodal detection, datasets, explainability, or language.
+
+Fallback rule:
+If the topic does not match any category above, create options from the nouns and technical terms in the user's query.
+Prefer:
+- method
+- application
+- dataset
+- domain
+- metric
+- comparison
+- time period
+- review/overview
+
+Language rule:
+Use the same language as the user when possible.
+If the query is in Portuguese, ask in Portuguese.
+If the query is in English, ask in English.
+
+Question style:
+The question should be direct, useful, and specific.
+
+Good patterns:
+- "Você quer uma visão geral sobre [topic] ou quer focar em algo mais específico, como [option 1], [option 2], [option 3] ou [option 4]?"
+- "Para [topic], você quer priorizar [option 1], [option 2], [option 3] ou uma revisão geral da área?"
 
 Bad questions. Never ask:
 - What specific aspect do you need?
@@ -115,90 +201,47 @@ Bad questions. Never ask:
 - What do you want to know?
 - Please clarify your query.
 
+Also never ask options unrelated to the topic.
+For example:
+- Do not ask about audio/video/image/text for stock prediction.
+- Do not ask about stock assets for medical image classification.
+- Do not ask about organs or exams for fake news detection.
+
 Examples:
 
 User query: stock prediction
+Reason from previous assessment: the query is broad and does not specify whether the user wants a general review or a specific focus
 Output:
-{{"can_search":false,"question":"Você quer uma visão geral/revisão sobre previsão de ações ou quer focar em algo mais específico, como método, tipo de ativo, horizonte temporal, fonte de dados ou métricas?","reason":"the query is broad and does not explicitly say whether the user wants an overview or a specific focus"}}
+{{"question":"Você quer uma visão geral sobre previsão de ações ou quer focar em algo mais específico, como métodos de previsão, tipo de ativo, horizonte temporal, fontes de dados ou métricas de avaliação?","reason":"the question offers finance-specific directions that would change the academic search terms"}}
 
-User query: stock prediction review
+User query: stock prediction
+Reason from previous assessment: the query does not indicate which data source should guide the search
 Output:
-{{"can_search":true,"question":null,"reason":"the user explicitly indicated a review intent"}}
-
-User query: quero aprender sobre o mundo de predição de ações de forma geral
-Output:
-{{"can_search":true,"question":null,"reason":"the user explicitly indicated broad learning intent"}}
-
-User query: stock price prediction using LSTM and news sentiment
-Output:
-{{"can_search":true,"question":null,"reason":"the query includes task, method, and data source"}}
+{{"question":"Na previsão de ações, você quer considerar quais fontes de dados: séries históricas de preços, indicadores técnicos, notícias, sentimento de mercado, fundamentos financeiros ou dados macroeconômicos?","reason":"the question asks about data sources that are relevant to stock prediction"}}
 
 User query: violence detection
+Reason from previous assessment: the query is broad and does not specify whether the focus is a general review or a specific modality
 Output:
-{{"can_search":false,"question":"Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?","reason":"the query is broad and the modality or overview intent would strongly change the search terms"}}
-
-User query: audio violence detection
-Output:
-{{"can_search":false,"question":"Você quer uma visão geral sobre detecção de violência em áudio ou quer focar em algo mais específico, como gritos, brigas, fala/emoção, datasets, modelos ou aplicação em celular?","reason":"the query has modality and task, but does not explicitly say whether the user wants overview or a specific technical focus"}}
-
-User query: audio violence detection review
-Output:
-{{"can_search":true,"question":null,"reason":"the user explicitly indicated review intent for a clear modality and task"}}
-
-User query: medical image classification
-Output:
-{{"can_search":false,"question":"Você quer uma visão geral sobre classificação de imagens médicas ou quer focar em algum tipo de imagem, como raio-X, ressonância, tomografia, histopatologia ou retina?","reason":"the query is broad and does not indicate overview intent or image type"}}
-
-User query: general medical image classification review
-Output:
-{{"can_search":true,"question":null,"reason":"the user explicitly indicated general review intent"}}
+{{"question":"Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?","reason":"the modality strongly changes the search terms for violence detection"}}
 
 User query: noisy data in medical image classification
+Reason from previous assessment: noise may refer to labels, images, acquisition, or robustness
 Output:
-{{"can_search":false,"question":"Você quer uma visão geral ou quer focar em rótulos ruidosos, imagens com ruído, robustez de modelos ou algum tipo específico de imagem médica?","reason":"the query has domain and problem, but different meanings of noise lead to different search terms"}}
+{{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?","reason":"different meanings of noise lead to different academic search terms"}}
 
-User query: shortcut bias
-Output:
-{{"can_search":false,"question":"Você quer uma visão geral sobre shortcut bias ou quer focar em algum domínio, como imagens médicas, NLP ou visão computacional?","reason":"the query is broad and does not indicate overview intent or domain"}}
-
-User query: quero uma visão geral sobre shortcut bias
-Output:
-{{"can_search":true,"question":null,"reason":"the user explicitly indicated overview intent"}}
-
-The examples above are only examples.
-Do not copy an example unless the current user query has the same topic.
-Your answer must be about the current user query below.
-The clarification question must mention the current topic or a direct translation of it.
-If the current query is about stock prediction, ask about stock prediction.
-If the current query is about violence detection, ask about violence detection.
-If the current query is about medical images, ask about medical images.
-Never answer about shortcut bias, medical images, violence detection, or any other example topic unless that is the current user query.
-
-Current user query:
-{context.user_query}
-
-Final check before answering:
-- If the query is broad and has no explicit broad-intent marker, return can_search=false.
-- If can_search=false, write a useful clarification question with options related to the current user query.
-- If the user clearly asks for general understanding, overview, review, survey, or learning the field, return can_search=true.
-- If can_search=true, question must be null.
-- If can_search=false, question must be a real question and must not be null.
-- Return only one valid JSON object.
+Now generate the final answer for the current user query only.
 
 Required JSON shape:
-{{"can_search":false,"question":"real clarification question about the current user query with options?","reason":"short reason"}}
-
-or:
-{{"can_search":true,"question":null,"reason":"short reason"}}
+{{"question":"one clarification question with topic-specific options","reason":"short reason"}}
 """
 
     return PromptSpec(
-        name="enrich_query",
-        version=ENRICH_QUERY_PROMPT_VERSION,
+        name="context_question",
+        version=CONTEXT_QUESTION_PROMPT_VERSION,
         text=text,
         metadata={
             "output_format": "json",
-            "purpose": "initial_query_assessment",
+            "purpose": "query_context_question",
         },
     )
 

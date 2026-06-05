@@ -4,8 +4,9 @@ from academic_explorer_mvp.graph.nodes.context_nodes import finalize, initialize
 from academic_explorer_mvp.graph.nodes.decision_nodes import decide_next_step
 
 from academic_explorer_mvp.graph.nodes.query_enrichment_nodes import (
-    assess_initial_query,
+    ask_context_question,
     commit_enriched_query,
+    enough_context_query,
     handle_query_confirmation_or_revision,
     interpret_query_confirmation,
     route_after_context_initialization,
@@ -22,10 +23,11 @@ from academic_explorer_mvp.graph.nodes.search_nodes import (
 )
 
 __all__ = [
-    "assess_initial_query",
+    "ask_context_question",
     "commit_enriched_query",
     "decide_next_step",
     "deduplicate_papers",
+    "enough_context_query",
     "finalize",
     "handle_query_confirmation_or_revision",
     "initialize_context",

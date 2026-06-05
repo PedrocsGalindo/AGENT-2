@@ -20,15 +20,15 @@ def route_after_context_initialization(state: SearchState) -> str:
     enrichment = _query_enrichment(state)
     stage = enrichment.get("stage")
 
-    if stage in {"awaiting_query_confirmation", "unclear_confirmation"}:
-        if _state_text(enrichment.get("confirmation_answer")):
-            return "handle_query_confirmation_or_revision"
-        return "finalize"
-
     if stage == "awaiting_clarification_answer":
         if _state_text(enrichment.get("answer")):
             return "rewrite_user_query_after_clarification"
-        return "finalize"
+        return "wait_for_user"
+
+    if stage in {"awaiting_query_confirmation", "unclear_confirmation"}:
+        if _state_text(enrichment.get("confirmation_answer")):
+            return "handle_query_confirmation_or_revision"
+        return "wait_for_user"
 
     if _state_text(enrichment.get("confirmation_answer")):
         return "handle_query_confirmation_or_revision"
@@ -36,23 +36,26 @@ def route_after_context_initialization(state: SearchState) -> str:
     if _state_text(enrichment.get("answer")) and enrichment.get("question"):
         return "rewrite_user_query_after_clarification"
 
-    return "assess_initial_query"
+    if stage == "ready_to_search":
+        return "plan_queries"
+
+    return "enough_context_query"
 
 
-def assess_initial_query(state: SearchState, planner: QueryPlanner) -> SearchState:
-    """Assess whether the initial user topic is ready for academic search."""
+def enough_context_query(state: SearchState, planner: QueryPlanner) -> SearchState:
+    """Assess whether the initial user topic has enough search context."""
 
     context = _context(state)
     enrichment = _query_enrichment(state)
-    assessment = planner.assess_initial_query(context)
+    assessment = planner.assess_query_context(context)
     original_query = _state_text(enrichment.get("original_query")) or context.user_query
 
-    if assessment.can_search:
+    if assessment.has_enough_context:
         new_state = set_query_enrichment(
             state,
             stage="ready_to_search",
             original_query=original_query,
-            can_search=True,
+            has_enough_context=True,
             reason=assessment.reason,
         )
         if new_state.get("stop_reason") in PAUSE_STOP_REASONS:
@@ -61,11 +64,11 @@ def assess_initial_query(state: SearchState, planner: QueryPlanner) -> SearchSta
 
     new_state = set_query_enrichment(
         state,
-        stage="awaiting_clarification_answer",
+        stage="needs_clarification",
         original_query=original_query,
-        can_search=False,
-        question=assessment.question,
+        has_enough_context=False,
         reason=assessment.reason,
+        question=None,
         answer=None,
         proposed_query=None,
         confirmation_answer=None,
@@ -74,7 +77,6 @@ def assess_initial_query(state: SearchState, planner: QueryPlanner) -> SearchSta
         message=None,
         round=int(enrichment.get("round") or 0) + 1,
     )
-    new_state["stop_reason"] = "awaiting clarification answer"
     return new_state
 
 
@@ -83,7 +85,32 @@ def route_after_initial_assessment(state: SearchState) -> str:
 
     if stage == "ready_to_search":
         return "ready_to_search"
+    if stage == "needs_clarification":
+        return "needs_clarification"
     return "needs_clarification"
+
+
+def ask_context_question(state: SearchState, planner: QueryPlanner) -> SearchState:
+    """Generate one clarification question after context assessment."""
+
+    context = _context(state)
+    enrichment = _query_enrichment(state)
+    reason = _required_text(enrichment.get("reason"), "reason")
+
+    question = planner.generate_context_question(
+        user_query=context.user_query,
+        reason=reason,
+    )
+
+    new_state = set_query_enrichment(
+        state,
+        stage="awaiting_clarification_answer",
+        question=question.question,
+        reason=question.reason,
+        answer=None,
+    )
+    new_state["stop_reason"] = "awaiting clarification answer"
+    return new_state
 
 
 def rewrite_user_query_after_clarification(

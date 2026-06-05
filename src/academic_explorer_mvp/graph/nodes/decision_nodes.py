@@ -1,10 +1,9 @@
 """Search continuation decision nodes."""
 
 from academic_explorer_mvp.domain.state import SearchState
-from academic_explorer_mvp.graph.nodes.context_nodes import _context
 from academic_explorer_mvp.services.query_planner import QueryPlanner
 from academic_explorer_mvp.services.ranker import PaperRanker
-
+from academic_explorer_mvp.graph.nodes.context_nodes import _context
 
 def decide_next_step(state: SearchState, planner: QueryPlanner, ranker: PaperRanker) -> SearchState:
     """Validate whether the graph should continue."""

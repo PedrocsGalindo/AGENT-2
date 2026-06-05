@@ -46,7 +46,8 @@ def build_graph(config: AppConfig):
     graph = StateGraph(SearchState)
 
     graph.add_node("initialize_context", nodes.initialize_context)
-    graph.add_node("assess_initial_query", lambda state: nodes.assess_initial_query(state, planner))
+    graph.add_node("enough_context_query", lambda state: nodes.enough_context_query(state, planner))
+    graph.add_node("ask_context_question", lambda state: nodes.ask_context_question(state, planner))
     graph.add_node(
         "rewrite_user_query_after_clarification",
         lambda state: nodes.rewrite_user_query_after_clarification(state, planner),
@@ -62,37 +63,41 @@ def build_graph(config: AppConfig):
     graph.add_node("deduplicate_papers", lambda state: nodes.deduplicate_papers(state, deduplicator))
     graph.add_node("rank_papers", lambda state: nodes.rank_papers(state, ranker))
     graph.add_node("decide_next_step", lambda state: nodes.decide_next_step(state, planner, ranker))
-    graph.add_node("finalize", nodes.finalize)
+    graph.add_node("finalize", lambda state: state)
+    graph.add_node("wait_for_user", lambda state: state)
 
     graph.set_entry_point("initialize_context")
     graph.add_conditional_edges(
         "initialize_context",
         nodes.route_after_context_initialization,
         {
-            "assess_initial_query": "assess_initial_query",
+            "enough_context_query": "enough_context_query",
             "rewrite_user_query_after_clarification": "rewrite_user_query_after_clarification",
             "handle_query_confirmation_or_revision": "handle_query_confirmation_or_revision",
+            "plan_queries": "plan_queries",
+            "wait_for_user": "wait_for_user",
             "finalize": "finalize",
         },
     )
     graph.add_conditional_edges(
-        "assess_initial_query",
+        "enough_context_query",
         nodes.route_after_initial_assessment,
         {
             "ready_to_search": "plan_queries",
-            "needs_clarification": "finalize",
+            "needs_clarification": "ask_context_question",
         },
     )
-    graph.add_edge("rewrite_user_query_after_clarification", "finalize")
+    graph.add_edge("ask_context_question", "wait_for_user")
+    graph.add_edge("rewrite_user_query_after_clarification", "wait_for_user")
     graph.add_conditional_edges(
         "handle_query_confirmation_or_revision",
         nodes.route_after_query_confirmation,
         {
             "commit_query": "commit_enriched_query",
-            "wait_for_user": "finalize",
+            "wait_for_user": "wait_for_user",
         },
     )
-    graph.add_edge("commit_enriched_query", "assess_initial_query")
+    graph.add_edge("commit_enriched_query", "enough_context_query")
 
     graph.add_edge("plan_queries", "search_papers")
     graph.add_edge("search_papers", "normalize_papers")
@@ -107,6 +112,7 @@ def build_graph(config: AppConfig):
             "finalize": "finalize",
         },
     )
+    graph.add_edge("wait_for_user", END)
     graph.add_edge("finalize", END)
     return graph.compile()
 
