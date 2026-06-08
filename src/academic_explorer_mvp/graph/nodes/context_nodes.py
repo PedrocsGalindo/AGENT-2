@@ -21,9 +21,21 @@ QUERY_ENRICHMENT_DEFAULTS: dict[str, object] = {
 }
 
 
+PAPER_FEEDBACK_DEFAULTS: dict[str, object] = {
+    "stage": "idle",
+    "answer": None,
+    "pending_answer": None,
+    "status": None,
+    "message": None,
+    "restriction": None,
+    "round": 0,
+}
+
+
 PAUSE_STOP_REASONS = {
     "awaiting clarification answer",
     "awaiting query confirmation",
+    "awaiting paper feedback",
 }
 
 
@@ -51,6 +63,7 @@ def initialize_context(state: SearchState) -> SearchState:
     new_state.setdefault("stop_reason", None)
     new_state.setdefault("model_continue_reason", None)
     new_state["query_enrichment"] = _query_enrichment(new_state)
+    new_state["paper_feedback"] = _paper_feedback(new_state)
     return new_state
 
 
@@ -76,11 +89,28 @@ def _query_enrichment(state: SearchState) -> dict[str, object]:
     return {**QUERY_ENRICHMENT_DEFAULTS, **enrichment}
 
 
+def _paper_feedback(state: SearchState) -> dict[str, object]:
+    """Return paper feedback substate with defaults applied."""
+
+    feedback = state.get("paper_feedback", {})
+    if not isinstance(feedback, dict):
+        feedback = {}
+    return {**PAPER_FEEDBACK_DEFAULTS, **feedback}
+
+
 def set_query_enrichment(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with query enrichment updates applied."""
 
     new_state: SearchState = dict(state)
     new_state["query_enrichment"] = {**_query_enrichment(state), **updates}
+    return new_state
+
+
+def set_paper_feedback(state: SearchState, **updates: object) -> SearchState:
+    """Return a new state with paper feedback updates applied."""
+
+    new_state: SearchState = dict(state)
+    new_state["paper_feedback"] = {**_paper_feedback(state), **updates}
     return new_state
 
 

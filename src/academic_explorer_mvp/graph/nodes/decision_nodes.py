@@ -11,13 +11,13 @@ def decide_next_step(state: SearchState, planner: QueryPlanner, ranker: PaperRan
     context = _context(state)
     ranked = state.get("ranked_papers", [])
     good_papers = [item for item in ranked if item.score >= ranker.good_score_threshold]
-
+    min_good_papers = 10
     new_state: SearchState = dict(state)
     if state.get("round_number", 0) >= context.max_rounds:
         new_state["stop_reason"] = "max rounds reached"
         return new_state
-    if len(good_papers) >= 5:
-        new_state["stop_reason"] = "found at least 5 good scored papers"
+    if len(good_papers) >= min_good_papers:
+        new_state["stop_reason"] = f"found at least {min_good_papers} good scored papers"
         return new_state
     if state.get("last_new_useful_count", 0) == 0:
         new_state["stop_reason"] = "last round did not bring useful new papers"

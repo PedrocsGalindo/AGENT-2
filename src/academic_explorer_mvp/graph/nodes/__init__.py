@@ -2,6 +2,13 @@
 
 from academic_explorer_mvp.graph.nodes.context_nodes import finalize, initialize_context
 from academic_explorer_mvp.graph.nodes.decision_nodes import decide_next_step
+from academic_explorer_mvp.graph.nodes.paper_feedback_nodes import (
+    ask_paper_feedback,
+    describe_paper_feedback_restriction,
+    handle_paper_feedback,
+    interpret_paper_feedback,
+    route_after_paper_feedback,
+)
 
 from academic_explorer_mvp.graph.nodes.query_enrichment_nodes import (
     ask_context_question,
@@ -24,17 +31,22 @@ from academic_explorer_mvp.graph.nodes.search_nodes import (
 
 __all__ = [
     "ask_context_question",
+    "ask_paper_feedback",
     "commit_enriched_query",
     "decide_next_step",
+    "describe_paper_feedback_restriction",
     "deduplicate_papers",
     "enough_context_query",
     "finalize",
     "handle_query_confirmation_or_revision",
+    "handle_paper_feedback",
     "initialize_context",
+    "interpret_paper_feedback",
     "interpret_query_confirmation",
     "normalize_papers",
     "plan_queries",
     "rank_papers",
+    "route_after_paper_feedback",
     "route_after_context_initialization",
     "route_after_initial_assessment",
     "route_after_query_confirmation",

@@ -18,8 +18,8 @@ class PromptSpec:
         return f"{self.name}@{self.version}"
 
 
-INITIAL_QUERIES_PROMPT_VERSION = "1.0.3"
-REFINE_QUERIES_PROMPT_VERSION = "1.0.0"
+INITIAL_QUERIES_PROMPT_VERSION = "1.0.4"
+REFINE_QUERIES_PROMPT_VERSION = "1.0.1"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.0"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
 ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.0.0"
@@ -254,27 +254,162 @@ def build_rewrite_user_query_prompt(
     """Prompt for proposing one refined user topic after clarification."""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
-                Create one clearer academic search topic from the initial query and
-                the user's clarification answer.
 
-                This output is not a list of academic search queries. It is the
-                refined user topic that will later be passed to initial query
-                planning.
+You are preparing an academic paper search.
 
-                Rules:
-                - Create only one clearer academic topic.
-                - Do not create multiple queries.
-                - Do not invent information.
-                - Use only the initial query and the user's answer.
+Task:
+Create one clearer academic search topic from the initial query and the user's clarification answer.
 
-                Initial query: {initial_query}
-                Clarification question: {question}
-                Why the question matters: {question_reason}
-                User answer: {user_answer}
+This output is not a list of academic search queries.
+It is the refined user topic that will later be passed to initial query planning.
 
-                Exact shape:
-                {{"proposed_query":"clear academic search topic","message":"Com base na sua resposta, a busca ficaria: ...","reason":"short reason"}}
-            """
+Main goal:
+Extract only the information that the user actually provided.
+Combine it with the initial query to create one clearer academic topic.
+
+Rules:
+- Create only one clearer academic topic.
+- Do not create multiple queries.
+- Do not invent information.
+- Do not invent methods, datasets, metrics, domains, applications, or restrictions.
+- Use only the initial query and the user's answer.
+- Use the clarification question only to understand what the user's answer refers to.
+- Preserve the main topic from the initial query.
+- Preserve useful technical terms from the initial query.
+- If the initial query is in English and contains academic terms, prefer keeping the proposed query in English.
+- If the user answer is in Portuguese but the initial query is in English, translate only the clarification intent, not the whole topic unnecessarily.
+- If the user asks for a general view, overview, review, survey, introduction, or to understand the area, make the proposed query review-oriented.
+- If the user says "geral", "visão geral", "quero entender", "quero aprender", "overview", "review", or similar, do not add a specific method.
+- If the user selected one option from the question, include that option only if it is actually present in the user's answer.
+- If the user's answer is vague but indicates general interest, produce a broad review/overview topic.
+- If the user's answer adds a specific focus, include that focus.
+- Do not make the topic more specific than the user's answer allows.
+- Keep the proposed query short, clear, and searchable.
+
+Important:
+A general answer should not be rewritten as a specific method.
+
+Examples of general answers:
+- "geral"
+- "visão geral"
+- "quero entender a área"
+- "quero aprender mais"
+- "overview"
+- "review"
+- "survey"
+- "state of the art"
+
+When the answer is general, use expressions such as:
+- overview of [topic]
+- review of [topic]
+- survey on [topic]
+- state of the art in [topic]
+- visão geral sobre [topic]
+- revisão da área de [topic]
+
+Bad behavior:
+- Do not turn "visão geral" into a specific method.
+- Do not add "voice analysis" unless the user mentioned voice.
+- Do not add "facial recognition" unless the user mentioned face or images.
+- Do not add "movement detection" unless the user mentioned motion, video, or movement.
+- Do not add "deep learning" unless the user mentioned it or it was already in the initial query.
+- Do not add a dataset unless the user mentioned it.
+- Do not add evaluation metrics unless the user mentioned them.
+
+Good behavior examples:
+
+Initial query: detecção de violência por áudio
+Clarification question: Você deseja uma visão geral sobre detecção de violência por áudio ou quer focar em datasets, modelos, métricas ou detecção em tempo real?
+Why the question matters: o usuário precisa escolher entre uma visão geral e um foco específico de pesquisa
+User answer: visão geral
+Output:
+{{"proposed_query":"visão geral sobre detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: visão geral sobre detecção de violência por áudio","reason":"the user asked for a general overview and the initial query already specifies audio violence detection"}}
+
+Initial query: detecção de violência por áudio
+Clarification question: Você deseja uma visão geral sobre detecção de violência por áudio ou quer focar em datasets, modelos, métricas ou detecção em tempo real?
+Why the question matters: o usuário precisa escolher entre uma visão geral e um foco específico de pesquisa
+User answer: quero entender melhor a área
+Output:
+{{"proposed_query":"revisão da área de detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: revisão da área de detecção de violência por áudio","reason":"the user indicated broad learning intent about the area"}}
+
+Initial query: detecção de violência
+Clarification question: Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?
+Why the question matters: a modalidade muda os termos acadêmicos da busca
+User answer: áudio
+Output:
+{{"proposed_query":"detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: detecção de violência por áudio","reason":"the user specified audio as the modality"}}
+
+Initial query: detecção de violência
+Clarification question: Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?
+Why the question matters: a modalidade muda os termos acadêmicos da busca
+User answer: visão geral
+Output:
+{{"proposed_query":"visão geral sobre detecção de violência","message":"Com base na sua resposta, a busca ficaria: visão geral sobre detecção de violência","reason":"the user asked for a general overview without specifying a modality"}}
+
+Initial query: previsão de ações
+Clarification question: Você quer uma visão geral sobre previsão de ações ou quer focar em métodos, fontes de dados, horizonte temporal ou métricas?
+Why the question matters: diferentes focos levam a diferentes termos acadêmicos de busca
+User answer: quero geral, só entender a área
+Output:
+{{"proposed_query":"visão geral sobre previsão de ações","message":"Com base na sua resposta, a busca ficaria: visão geral sobre previsão de ações","reason":"the user requested a general understanding of the research area"}}
+
+Initial query: previsão de ações
+Clarification question: Você quer uma visão geral sobre previsão de ações ou quer focar em métodos, fontes de dados, horizonte temporal ou métricas?
+Why the question matters: diferentes focos levam a diferentes termos acadêmicos de busca
+User answer: LSTM com notícias e sentimento de mercado
+Output:
+{{"proposed_query":"previsão de ações usando LSTM, notícias e sentimento de mercado","message":"Com base na sua resposta, a busca ficaria: previsão de ações usando LSTM, notícias e sentimento de mercado","reason":"the user specified the method and data sources"}}
+
+Initial query: dados ruidosos em classificação de imagens médicas
+Clarification question: Você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?
+Why the question matters: diferentes sentidos de ruído levam a diferentes termos acadêmicos de busca
+User answer: revisão geral
+Output:
+{{"proposed_query":"revisão sobre dados ruidosos em classificação de imagens médicas","message":"Com base na sua resposta, a busca ficaria: revisão sobre dados ruidosos em classificação de imagens médicas","reason":"the user asked for a general review of the topic"}}
+
+Initial query: dados ruidosos em classificação de imagens médicas
+Clarification question: Você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?
+Why the question matters: diferentes sentidos de ruído levam a diferentes termos acadêmicos de busca
+User answer: rótulos ruidosos
+Output:
+{{"proposed_query":"rótulos ruidosos em classificação de imagens médicas","message":"Com base na sua resposta, a busca ficaria: rótulos ruidosos em classificação de imagens médicas","reason":"the user clarified that noisy data refers to label noise"}}
+
+Initial query: engenharia de prompt para geração de imagens
+Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
+Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
+User answer: quero uma visão geral da área
+Output:
+{{"proposed_query":"visão geral sobre engenharia de prompt para geração de imagens","message":"Com base na sua resposta, a busca ficaria: visão geral sobre engenharia de prompt para geração de imagens","reason":"the user requested a general overview of the area"}}
+
+Initial query: engenharia de prompt para geração de imagens
+Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
+Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
+User answer: quero focar em controle de estilo e qualidade visual
+Output:
+{{"proposed_query":"engenharia de prompt para controle de estilo e qualidade visual em geração de imagens","message":"Com base na sua resposta, a busca ficaria: engenharia de prompt para controle de estilo e qualidade visual em geração de imagens","reason":"the user specified style control and visual quality as the research focus"}}
+
+Initial query: engenharia de prompt para geração de imagens
+Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
+Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
+User answer: avaliação de prompts
+Output:
+{{"proposed_query":"avaliação de prompts para geração de imagens","message":"Com base na sua resposta, a busca ficaria: avaliação de prompts para geração de imagens","reason":"the user specified prompt evaluation as the focus"}}
+
+Initial query:
+{initial_query}
+
+Clarification question:
+{question}
+
+Why the question matters:
+{question_reason}
+
+User answer:
+{user_answer}
+
+Exact shape:
+{{"proposed_query":"clear academic search topic","message":"Com base na sua resposta, a busca ficaria: ...","reason":"short reason"}}
+"""
 
     return PromptSpec(
         name="rewrite_user_query",
@@ -358,6 +493,8 @@ Important rules:
 - If the topic contains a modality, preserve that modality in every query.
 - If the topic is about audio, every query must include an audio-related term such as audio, acoustic, sound, or speech.
 - Avoid video-only, image-only, and text-only interpretations when the user topic is about audio.
+- When the topic is audio violence detection and the user did not explicitly ask for multimodal search, treat it as audio-only.
+- For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech.
 - Prefer precise academic search terms.
 - Do not invent datasets, methods, or domains not implied by the topic.
 - Keep each query short and searchable.
@@ -367,9 +504,9 @@ Good examples:
 User topic: audio violence detection
 Output:
 {{"queries":[
-  "audio violence detection",
-  "acoustic event detection for violence and aggression",
-  "audio surveillance scream gunshot violence detection"
+  "audio-only violence detection review",
+  "acoustic event detection violence aggression audio-only",
+  "sound-based violence detection surveillance review"
 ]}}
 
 User topic: noisy data in medical image classification
@@ -423,11 +560,13 @@ def build_refine_queries_prompt(
     context: SearchContext,
     ranked_papers: list[RankedPaper],
     used_queries: list[str],
+    paper_feedback: str = "",
 ) -> PromptSpec:
     """Prompt for refining search queries."""
 
     titles = "; ".join(item.paper.title[:80] for item in ranked_papers) or "none"
     used = "; ".join(used_queries[-6:]) or "none"
+    feedback = paper_feedback or "none"
 
     text = f"""Return only one JSON object. No markdown. No explanation.
                 The "queries" array must contain 1 to 3 non-empty strings.
@@ -436,6 +575,15 @@ def build_refine_queries_prompt(
                 Minimum year: {context.min_year}
                 Used queries: {used}
                 Best paper titles: {titles}
+                User feedback/restriction for the next search: {feedback}
+                If user feedback/restriction is not "none", every query must obey it.
+                Treat exclusions in the feedback as hard exclusions.
+                When the topic is audio violence detection and the user did not explicitly ask for multimodal search, treat it as audio-only.
+                For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech.
+                Good audio-only query examples:
+                - audio-only violence detection review
+                - acoustic event detection violence aggression audio-only
+                - sound-based violence detection surveillance review
                 Exact shape: {{"queries":["{context.user_query} method"],"reason":"new angle"}}
             """
 

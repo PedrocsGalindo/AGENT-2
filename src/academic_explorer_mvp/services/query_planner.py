@@ -223,6 +223,7 @@ class QueryPlanner:
         context: SearchContext,
         ranked_papers: list[RankedPaper],
         used_queries: list[str],
+        paper_feedback: str = "",
     ) -> list[str]:
         """Ask the local model for next-round queries."""
 
@@ -232,6 +233,7 @@ class QueryPlanner:
                 context=context,
                 ranked_papers=ranked_papers[:5],
                 used_queries=used_queries,
+                paper_feedback=paper_feedback,
             ),
         )
         queries = self._extract_queries(payload)

@@ -17,10 +17,13 @@ def plan_queries(state: SearchState, planner: QueryPlanner) -> SearchState:
     if state.get("round_number", 0) == 0:
         queries = planner.plan_initial_queries(context)
     else:
+        feedback = state.get("paper_feedback", {}) or {}
+        paper_feedback = feedback.get("restriction") or feedback.get("answer")
         queries = planner.refine_queries(
             context=context,
             ranked_papers=state.get("ranked_papers", []),
             used_queries=state.get("used_queries", []),
+            paper_feedback=str(paper_feedback or ""),
         )
 
     query_history = list(state.get("query_history", []))

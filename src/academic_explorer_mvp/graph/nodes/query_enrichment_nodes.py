@@ -6,6 +6,7 @@ from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph.nodes.context_nodes import (
     PAUSE_STOP_REASONS,
     _context,
+    _paper_feedback,
     _query_enrichment,
     _required_text,
     set_query_enrichment,
@@ -19,6 +20,22 @@ def route_after_context_initialization(state: SearchState) -> str:
 
     enrichment = _query_enrichment(state)
     stage = enrichment.get("stage")
+    feedback = _paper_feedback(state)
+    feedback_stage = feedback.get("stage")
+
+    if feedback_stage == "accepted":
+        return "finalize"
+
+    if feedback_stage in {"feedback_applied", "ready_for_feedback_search"}:
+        return "plan_queries"
+
+    if feedback_stage in {"awaiting_paper_feedback", "unclear_paper_feedback"}:
+        if _state_text(feedback.get("pending_answer")):
+            return "handle_paper_feedback"
+        return "wait_for_user"
+
+    if _state_text(feedback.get("pending_answer")):
+        return "handle_paper_feedback"
 
     if stage == "awaiting_clarification_answer":
         if _state_text(enrichment.get("answer")):

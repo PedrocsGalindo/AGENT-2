@@ -44,7 +44,7 @@ def build_graph(config: AppConfig):
     deduplicator = PaperDeduplicator()
     ranker = PaperRanker()
     graph = StateGraph(SearchState)
-
+    ## INITIAL QUERY
     graph.add_node("initialize_context", nodes.initialize_context)
     graph.add_node("enough_context_query", lambda state: nodes.enough_context_query(state, planner))
     graph.add_node("ask_context_question", lambda state: nodes.ask_context_question(state, planner))
@@ -57,15 +57,20 @@ def build_graph(config: AppConfig):
         lambda state: nodes.handle_query_confirmation_or_revision(state, planner),
     )
     graph.add_node("commit_enriched_query", nodes.commit_enriched_query)
+    ## SEARCH 
     graph.add_node("plan_queries", lambda state: nodes.plan_queries(state, planner))
     graph.add_node("search_papers", lambda state: nodes.search_papers(state, search_service))
     graph.add_node("normalize_papers", lambda state: nodes.normalize_papers(state, normalizer))
     graph.add_node("deduplicate_papers", lambda state: nodes.deduplicate_papers(state, deduplicator))
     graph.add_node("rank_papers", lambda state: nodes.rank_papers(state, ranker))
+    graph.add_node("ask_paper_feedback", nodes.ask_paper_feedback)
+    graph.add_node("handle_paper_feedback", nodes.handle_paper_feedback)
     graph.add_node("decide_next_step", lambda state: nodes.decide_next_step(state, planner, ranker))
+    ##
     graph.add_node("finalize", lambda state: state)
     graph.add_node("wait_for_user", lambda state: state)
-
+    
+    # EDGES 
     graph.set_entry_point("initialize_context")
     graph.add_conditional_edges(
         "initialize_context",
@@ -74,6 +79,7 @@ def build_graph(config: AppConfig):
             "enough_context_query": "enough_context_query",
             "rewrite_user_query_after_clarification": "rewrite_user_query_after_clarification",
             "handle_query_confirmation_or_revision": "handle_query_confirmation_or_revision",
+            "handle_paper_feedback": "handle_paper_feedback",
             "plan_queries": "plan_queries",
             "wait_for_user": "wait_for_user",
             "finalize": "finalize",
@@ -103,7 +109,16 @@ def build_graph(config: AppConfig):
     graph.add_edge("search_papers", "normalize_papers")
     graph.add_edge("normalize_papers", "deduplicate_papers")
     graph.add_edge("deduplicate_papers", "rank_papers")
-    graph.add_edge("rank_papers", "decide_next_step")
+    graph.add_edge("rank_papers", "ask_paper_feedback")
+    graph.add_edge("ask_paper_feedback", "wait_for_user")
+    graph.add_conditional_edges(
+        "handle_paper_feedback",
+        nodes.route_after_paper_feedback,
+        {
+            "wait_for_user": "wait_for_user",
+            "finalize": "finalize",
+        },
+    )
     graph.add_conditional_edges(
         "decide_next_step",
         route_after_decision,
@@ -173,6 +188,48 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             state["stop_reason"] = None
             continue
 
+        feedback = state.get("paper_feedback", {}) or {}
+        feedback_stage = feedback.get("stage")
+
+        if feedback_stage in {"awaiting_paper_feedback", "unclear_paper_feedback"}:
+            message = feedback.get("message")
+
+            if message:
+                print("\n" + str(message))
+            else:
+                print(
+                    '\nResponda "sim" para aceitar a direcao da busca ou '
+                    "escreva uma critica/direcionamento."
+                )
+
+            answer = input("\nSua resposta: ").strip()
+
+            while not answer:
+                answer = input(
+                    'Responda "sim" ou escreva uma critica/direcionamento: '
+                ).strip()
+
+            state = _update_paper_feedback(
+                state,
+                pending_answer=answer,
+            )
+
+            state["stop_reason"] = None
+            continue
+
+        if feedback_stage == "feedback_applied":
+            message = feedback.get("message")
+            if message:
+                print("\n" + str(message))
+
+            state = _update_paper_feedback(
+                state,
+                stage="ready_for_feedback_search",
+                message=None,
+            )
+            state["stop_reason"] = None
+            continue
+
         return state
     
 def _update_query_enrichment(state: SearchState, **updates: object) -> SearchState:
@@ -184,4 +241,16 @@ def _update_query_enrichment(state: SearchState, **updates: object) -> SearchSta
     enrichment.update(updates)
 
     new_state["query_enrichment"] = enrichment
+    return new_state
+
+
+def _update_paper_feedback(state: SearchState, **updates: object) -> SearchState:
+    """Return a copied state with updated paper feedback data."""
+
+    new_state: SearchState = dict(state)
+
+    feedback = dict(new_state.get("paper_feedback", {}) or {})
+    feedback.update(updates)
+
+    new_state["paper_feedback"] = feedback
     return new_state
