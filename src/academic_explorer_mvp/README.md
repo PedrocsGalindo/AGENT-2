@@ -35,17 +35,41 @@ initialize_context
   -> search_papers
   -> normalize_papers
   -> deduplicate_papers
-  -> rank_papers
+  -> validate_papers
   -> decide_next_step
-      -> continue: plan_queries
-      -> finalize: finalize
+  -> ask_paper_feedback
+      -> sim: finalize
+      -> critica: analyze_search_feedback -> plan_queries
 ```
 
-O feedback humano nao foi implementado. O ponto previsto para depois e:
+## Como a busca funciona
 
-```text
-rank_papers -> ask_feedback -> apply_feedback -> decide_next_step
+O usuario informa uma query inicial, por exemplo: "deteccao de violencia em audio".
+O sistema primeiro avalia se essa query tem contexto suficiente para comecar uma
+busca academica util. Se faltar contexto, ele faz uma pergunta de clarificacao
+para entender melhor a intencao da pesquisa.
+
+Depois da query estar clara, o sistema gera de 1 a 3 queries academicas que serao
+usadas para buscar artigos. Antes de pesquisar, essas queries sao exibidas no
+terminal. O parametro `--limit` controla quantos resultados sao buscados por
+query/rodada, conforme a implementacao atual. O parametro `--max-rounds`
+controla quantas rodadas de busca podem acontecer.
+
+Depois de cada rodada, os artigos encontrados passam por uma validacao semantica.
+Essa validacao tenta separar artigos realmente relacionados ao tema daqueles que
+so tem palavras parecidas. Se o usuario criticar os resultados, o sistema usa
+esse feedback para ajustar a direcao da busca nas proximas rodadas.
+
+Exemplo:
+
+```powershell
+py -m academic_explorer_mvp.main --query "detecção de violência em áudio" --min-year 2020 --max-rounds 3 --limit 5
 ```
+
+- `--query`: tema inicial da busca.
+- `--min-year`: ano minimo dos artigos.
+- `--max-rounds`: numero maximo de rodadas de busca.
+- `--limit`: quantidade de resultados buscados por rodada/query, conforme a implementacao.
 
 ## Ambiente
 

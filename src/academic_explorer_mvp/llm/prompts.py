@@ -613,69 +613,146 @@ User topic:
 Minimum year:
 {context.min_year}
 
+Task:
+Create 1 to 3 short academic search queries for finding academic papers.
+
+The user topic was already assessed or refined before reaching this step.
+Do not ask questions here.
+Do not reassess whether the topic has enough context.
+
+Core goal:
+Generate search queries that are faithful to the user's topic.
+Do not add search intentions that the user did not express.
+
+Query planning strategy:
+- Query 1 should be the closest academic version of the user topic.
+- Query 2 may use academic synonyms or equivalent terms.
+- Query 3 may explore a related angle only if it is clearly implied by the topic.
+
 Before writing the queries, analyze internally:
-- What is the user's main research goal?
-- What area or modality is central to the topic?
-- What related academic terms could improve retrieval?
-- What meanings should be avoided?
-- What would make the search too broad?
+- What is the user's main topic?
+- What task, method, modality, domain, application, or problem is explicitly present?
+- What terms would retrieve relevant papers?
+- What terms would cause topic drift?
+- What should not be added because the user did not mention it?
 
 Important rules:
 - Return only the final JSON object.
 - Do not include your internal analysis.
 - The "queries" array must contain 1 to 3 non-empty strings.
-- Do not simply repeat the user topic unless it is already a strong academic query.
 - Every query must preserve the user's main intent.
-- If the topic contains a modality, preserve that modality in every query.
-- If the topic is about audio, every query must include an audio-related term such as audio, acoustic, sound, or speech.
-- Avoid video-only, image-only, and text-only interpretations when the user topic is about audio.
-- When the topic is audio violence detection and the user did not explicitly ask for multimodal search, treat it as audio-only.
-- For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech.
-- Prefer precise academic search terms.
-- Do not invent datasets, methods, or domains not implied by the topic.
 - Keep each query short and searchable.
+- Prefer precise academic terms.
+- Do not invent datasets, methods, domains, metrics, years, restrictions, or review intent.
+- Do not add "review", "survey", "overview", "state of the art", "taxonomy", or "systematic review" unless the user topic explicitly asks for review/overview/general understanding.
+- Do not add "deep learning", "machine learning", "benchmark", "datasets", or "evaluation" unless stated or clearly implied by the topic.
+- Do not broaden a specific topic into a generic field.
+- Do not narrow a broad topic into one specific method unless the method was mentioned.
 
-Good examples:
+Review intent rules:
+Only use review-oriented terms when the user topic contains words such as:
+review, survey, overview, literature review, systematic review, state of the art,
+visão geral, revisão, panorama, estado da arte, quero entender, quero aprender.
 
-User topic: audio violence detection
+If the user did not ask for review, do not add review/survey terms.
+
+Modality rules:
+- If the topic contains a modality, preserve that modality in every query.
+- If the topic is about audio, every query must include an audio-related term such as audio, audio-only, acoustic, sound, or speech.
+- If the topic is about audio-only violence detection, avoid video-only, image-only, text-only, multimodal, and audio-visual interpretations.
+- When the topic is violence detection in audio and the user did not explicitly ask for multimodal search, treat it as audio-only.
+- For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech, deepfake.
+
+Bad behavior:
+- Do not turn "detecção de violência em áudio" into "deepfake detection".
+- Do not turn "detecção de violência em áudio" into "video surveillance violence detection".
+- Do not turn an audio-only topic into multimodal or audio-visual search.
+- Do not add review/survey if the user only described the topic.
+- Do not copy examples unless they fit the current topic.
+
+Examples:
+The examples below are illustrative.
+Use them to understand how to preserve intent.
+
+User topic: detecção de violência em áudio
+Output:
+{{"queries":[
+  "audio-only violence detection",
+  "acoustic violence detection",
+  "sound-based violence detection"
+],"reason":"the topic specifies violence detection using audio, without explicit review intent"}}
+
+User topic: visão geral sobre detecção de violência em áudio
 Output:
 {{"queries":[
   "audio-only violence detection review",
-  "acoustic event detection violence aggression audio-only",
-  "sound-based violence detection surveillance review"
-]}}
+  "survey of acoustic violence detection",
+  "sound-based violence detection methods"
+],"reason":"the user explicitly requested a general overview of audio-based violence detection"}}
 
-User topic: noisy data in medical image classification
+User topic: detecção de violência em áudio usando deep learning
 Output:
 {{"queries":[
-  "noisy labels in medical image classification",
-  "robust learning under label noise in medical imaging",
-  "review noisy data medical image analysis"
-]}}
-
-User topic: medical image classification
-Output:
-{{"queries":[
-  "medical image classification deep learning review",
-  "general medical image analysis classification methods",
-  "medical imaging datasets for image classification"
-]}}
-
-User topic: shortcut bias in deep learning
-Output:
-{{"queries":[
-  "shortcut learning in deep neural networks",
-  "spurious correlations and shortcut bias in machine learning",
-  "dataset bias robustness shortcut learning review"
-]}}
+  "audio violence detection deep learning",
+  "deep learning for acoustic violence detection",
+  "neural networks for sound-based violence detection"
+],"reason":"the topic specifies audio modality and deep learning methods"}}
 
 User topic: violence detection
 Output:
 {{"queries":[
-  "violence detection survey",
-  "violent event detection in multimedia",
-  "deep learning methods for violence detection"
-]}}
+  "violence detection",
+  "violent event detection",
+  "automatic violence detection"
+],"reason":"the topic is broad and does not specify modality or review intent"}}
+
+User topic: violence detection review
+Output:
+{{"queries":[
+  "violence detection review",
+  "violent event detection survey",
+  "automatic violence detection methods"
+],"reason":"the user explicitly requested review intent"}}
+
+User topic: previsão de ações usando LSTM e sentimento de notícias
+Output:
+{{"queries":[
+  "stock price prediction using LSTM and news sentiment",
+  "financial time series forecasting with LSTM and sentiment analysis",
+  "stock market forecasting news sentiment recurrent neural networks"
+],"reason":"the topic specifies stock prediction, LSTM, and news sentiment"}}
+
+User topic: visão geral sobre previsão de ações
+Output:
+{{"queries":[
+  "stock price prediction review",
+  "stock market forecasting survey",
+  "financial time series forecasting methods"
+],"reason":"the user requested a general overview of stock prediction research"}}
+
+User topic: rótulos ruidosos em classificação de imagens médicas
+Output:
+{{"queries":[
+  "label noise in medical image classification",
+  "medical image classification with noisy labels",
+  "robust learning under label noise in medical imaging"
+],"reason":"the topic specifies label noise and medical image classification"}}
+
+User topic: engenharia de prompt para geração de imagens
+Output:
+{{"queries":[
+  "prompt engineering for image generation",
+  "prompt design for text-to-image generation",
+  "text-to-image prompt optimization"
+],"reason":"the topic specifies prompt engineering for image generation without review intent"}}
+
+User topic: visão geral sobre engenharia de prompt para geração de imagens
+Output:
+{{"queries":[
+  "prompt engineering for image generation review",
+  "text-to-image prompt engineering survey",
+  "prompt design methods for text-to-image generation"
+],"reason":"the user requested a general overview of prompt engineering for image generation"}}
 
 Exact shape:
 {{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"short reason"}}
@@ -731,29 +808,142 @@ Candidate papers:
 Task:
 For each candidate paper, decide whether it is relevant to the user's search intent.
 
+Critical output rule:
+You must return exactly one validation object for every candidate paper listed above.
+Do not skip any candidate.
+Do not add papers that are not in the candidate list.
+The paper_id must exactly match the candidate paper id.
+Each validation object must be based only on that same candidate paper.
+
+Critical evidence rule:
+Do not mix information between papers.
+Do not use the title or abstract of one paper to justify another paper.
+Do not invent claims, methods, architectures, datasets, or modalities.
+If a detail is not present in the title or abstract, do not mention it.
+
+Core validation rule:
+Semantic relevance matters more than keyword overlap.
+A paper is relevant only if it helps answer the user's actual search intent.
+
+For each paper, check:
+1. Does it match the main topic?
+2. Does it match the task or research problem?
+3. Does it match the requested modality, domain, method, or constraint?
+4. Does it violate any negative constraint?
+5. Would it actually help the user with this search?
+
 Rules:
 - Evaluate semantic relation to the user's intent, not superficial word overlap.
-- Do not mark a paper relevant only because it contains a similar word.
-- If the user asked for audio-only, reject video, visual, audio-visual, audiovisual, multimodal, image, text, and hate speech papers unless the title/abstract clearly says audio is the actual violence-detection modality.
-- If the user asked for an overview, prioritize surveys, reviews, and papers useful for mapping methods, datasets, or approaches.
-- Reject papers from another domain, such as deepfake, ChatGPT, misinformation, hate speech, generic LLMs, data feminism, or text-only detection, when they do not answer the search intent.
+- Use the current revised topic as the main reference.
+- Treat positive constraints as desired signals.
+- Treat negative constraints as hard exclusions.
 - Keep the explanation short and based only on title, abstract, year, source, and URL.
 - Do not invent information absent from the title or abstract.
 - If the abstract is missing, judge cautiously using only title and metadata.
+- If the paper title/abstract is about a different task, domain, or modality, exclude it.
+- If the paper only shares generic terms such as detection, audio, violence, survey, or deep learning but studies another topic, exclude it.
 
 Relevance labels:
-- high: directly related to the user's intent.
-- medium: partially related but still useful.
-- low: tangential and only worth including if there are few results.
-- reject: outside the topic.
+- high: directly related to the revised topic and useful for the user's intent.
+- medium: partially related and useful, but missing one secondary aspect.
+- low: tangential; only useful as background.
+- reject: wrong topic, wrong domain, wrong modality, wrong task, or violates constraints.
 
 Decision labels:
-- include: use for high, medium, and only clearly useful low papers.
-- exclude: use for reject and papers that violate negative constraints.
+- include: use for high and medium papers.
+- include: use for low only if it is clearly useful background.
+- exclude: use for reject.
+- exclude: use for any paper that clearly violates negative constraints.
 
-Expected behavior for audio-only violence detection:
-- Include papers about audio-based, acoustic, sound-based, or audio-signal violence detection.
-- Exclude papers about deepfake, ChatGPT, misinformation, Data Feminism, video-based violence detection, vision-based surveillance, and multimodal/audio-visual detection.
+Audio-only violence detection rules:
+If the user's topic is about violence detection in audio, audio-only violence detection, acoustic violence detection, or sound-based violence detection:
+
+Include papers when:
+- the title or abstract clearly indicates audio-based, acoustic, sound-based, audio-signal, speech-signal, or audio-only violence/aggression detection;
+- or the title/abstract clearly says violence detection is performed using audio signals.
+
+Exclude papers when:
+- the paper is mainly about video surveillance;
+- the paper is mainly about images, visual features, CCTV frames, cameras, or computer vision;
+- the paper is mainly about audio-visual, audiovisual, multimodal, or multimedia detection;
+- the paper is mainly about deepfake detection;
+- the paper is mainly about misinformation, fake news, hate speech, ChatGPT, generic LLMs, or AI-generated content;
+- the paper mentions audio only as one possible format but does not study audio-based violence detection.
+
+Important examples for audio-only violence detection:
+- Title: "In-Car Violence Detection Based on the Audio Signal"
+  Expected: high/include, because it directly studies violence detection based on audio signal.
+- Title: "Efficient Violence Detection in Surveillance"
+  Expected: reject/exclude if title or abstract indicates video surveillance, cameras, frames, or visual detection.
+- Title: "A Survey on the Detection and Impacts of Deepfakes in Visual, Audio, and Textual Formats"
+  Expected: reject/exclude, because it is about deepfake detection, not audio-based violence detection.
+- Title: "Deepfake detection using deep learning methods: A systematic and comprehensive review"
+  Expected: reject/exclude, because it is about deepfake detection.
+- Title: "ETHOS: a multi-label hate speech detection dataset"
+  Expected: reject/exclude, because it is about hate speech/text detection, not audio violence detection.
+- Title: "Multimodal Audio-Visual Violence Detection in Surveillance Systems"
+  Expected: reject/exclude when the user asked for audio-only, because it is multimodal/audio-visual.
+
+General examples:
+
+User search intent: visão geral sobre detecção de fake news
+Current revised topic: revisão sobre detecção de fake news
+Candidate title: A Survey on Fake News Detection: Methods, Datasets, and Evaluation
+Expected:
+{{"relevance":"high","decision":"include","relevance_reason":"The paper is a survey about fake news detection methods, datasets, and evaluation.","mismatch_reason":"","useful_for":"overview"}}
+
+User search intent: visão geral sobre detecção de fake news
+Current revised topic: revisão sobre detecção de fake news
+Candidate title: Fake News and Political Polarization: A Sociological Essay
+Expected:
+{{"relevance":"low","decision":"exclude","relevance_reason":"The paper discusses fake news, but not fake news detection methods.","mismatch_reason":"It focuses on sociological effects rather than detection.","useful_for":"not useful"}}
+
+User search intent: previsão de ações usando LSTM e sentimento de notícias
+Current revised topic: stock price prediction using LSTM and news sentiment
+Candidate title: Stock Price Forecasting Using LSTM Networks and Financial News Sentiment
+Expected:
+{{"relevance":"high","decision":"include","relevance_reason":"The paper matches the task, method, and data source.","mismatch_reason":"","useful_for":"methods and evaluation"}}
+
+User search intent: previsão de ações usando LSTM e sentimento de notícias
+Current revised topic: stock price prediction using LSTM and news sentiment
+Candidate title: Weather Forecasting Using LSTM and Sentiment Analysis
+Expected:
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper uses similar methods but is about weather forecasting, not stock prediction.","useful_for":"not useful"}}
+
+User search intent: rótulos ruidosos em classificação de imagens médicas
+Current revised topic: label noise in medical image classification
+Candidate title: Robust Learning with Noisy Labels for Medical Image Classification
+Expected:
+{{"relevance":"high","decision":"include","relevance_reason":"The paper directly addresses noisy labels in medical image classification.","mismatch_reason":"","useful_for":"methods and robustness"}}
+
+User search intent: rótulos ruidosos em classificação de imagens médicas
+Current revised topic: label noise in medical image classification
+Candidate title: Denoising MRI Images under Acquisition Noise
+Expected:
+{{"relevance":"low","decision":"exclude","relevance_reason":"The paper is related to medical image noise, but not label noise in classification.","mismatch_reason":"It focuses on acquisition/image noise rather than noisy labels.","useful_for":"not useful"}}
+
+User search intent: engenharia de prompt para geração de imagens
+Current revised topic: prompt engineering for image generation
+Candidate title: Prompt Engineering for Text-to-Image Generation Models
+Expected:
+{{"relevance":"high","decision":"include","relevance_reason":"The paper directly matches prompt engineering for image generation.","mismatch_reason":"","useful_for":"methods"}}
+
+User search intent: engenharia de prompt para geração de imagens
+Current revised topic: prompt engineering for image generation
+Candidate title: Prompt Engineering for Code Generation with Large Language Models
+Expected:
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about code generation, not image generation.","useful_for":"not useful"}}
+
+Special rule for overview/review searches:
+If the user explicitly asked for overview, review, survey, introduction, or state of the art:
+- include surveys, reviews, taxonomies, benchmarks, and broad comparative papers that match the topic;
+- include representative method papers as medium if they help map the area;
+- reject narrow papers from a different domain, modality, or task.
+
+Special rule for strict constraints:
+If negative constraints are provided, reject papers that clearly violate them.
+If positive constraints are provided, prefer papers that explicitly match them.
+If a paper is relevant to the broad topic but violates a constraint, exclude it.
 
 Required JSON shape:
 {{"validated_papers":[{{"paper_id":"paper id","relevance":"high","decision":"include","relevance_reason":"short reason","mismatch_reason":"","useful_for":"how this helps the research"}}],"summary":"short summary of relevant and rejected paper types"}}
@@ -768,7 +958,6 @@ Required JSON shape:
             "purpose": "paper_semantic_validation",
         },
     )
-
 
 def build_refine_queries_prompt(
     context: SearchContext,
