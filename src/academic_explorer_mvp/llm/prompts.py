@@ -18,10 +18,11 @@ class PromptSpec:
         return f"{self.name}@{self.version}"
 
 
-INITIAL_QUERIES_PROMPT_VERSION = "1.0.4"
-REFINE_QUERIES_PROMPT_VERSION = "1.0.2"
+INITIAL_QUERIES_PROMPT_VERSION = "1.0.5"
+PLAN_FILTERS_PROMPT_VERSION = "1.0.1"
+REFINE_QUERIES_PROMPT_VERSION = "1.0.3"
 FEEDBACK_ANALYSIS_PROMPT_VERSION = "1.0.0"
-VALIDATE_PAPERS_PROMPT_VERSION = "1.0.0"
+VALIDATE_PAPERS_PROMPT_VERSION = "1.0.1"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.0"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
 ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.0.0"
@@ -31,7 +32,7 @@ REWRITE_FROM_USER_REVISION_PROMPT_VERSION = "1.0.0"
 
 
 def build_assess_query_context_prompt(context: SearchContext) -> PromptSpec:
-    """contexto suficiente ou nao"""
+    """Prompt for deciding whether the query has enough context."""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
@@ -39,6 +40,10 @@ You are preparing an academic paper search.
 
 Task:
 Decide whether the user's query has enough context to start building useful academic search queries.
+
+Language rule:
+The reason must be in English because it is internal.
+Keep JSON keys in English.
 
 Core decision criterion:
 A query has enough context only when it contains:
@@ -80,23 +85,23 @@ User query: stock price prediction using LSTM and news sentiment
 Output:
 {{"has_enough_context":true,"reason":"the query specifies the task, method, and data source"}}
 
-User query: violence detection
+User query: fraud detection
 Output:
-{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants a general overview or a specific focus such as modality, datasets, models, or deployment"}}
+{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants a general overview or a specific focus such as data type, datasets, models, domain, or deployment"}}
 
-User query: violence detection review
+User query: fraud detection review
 Output:
 {{"has_enough_context":true,"reason":"the user explicitly indicated review intent for the topic"}}
 
-User query: audio violence detection
+User query: image-based plant disease detection
 Output:
 {{"has_enough_context":false,"reason":"the query specifies the modality, but not whether the user wants a general overview or a specific focus such as datasets, models, features, metrics, real-time detection, or comparison"}}
 
-User query: audio violence detection review
+User query: image-based plant disease detection review
 Output:
-{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for audio-based violence detection"}}
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for image-based plant disease detection"}}
 
-User query: audio violence detection using deep learning
+User query: image-based plant disease detection using deep learning
 Output:
 {{"has_enough_context":true,"reason":"the query specifies the task, modality, and method family"}}
 
@@ -274,10 +279,9 @@ def build_context_question_prompt(
     * Do not add methods, datasets, metrics, or domains that are not natural for the topic.
 
     Language rule:
-    Use the same language as the user when possible.
-    If the query is in Portuguese, ask in Portuguese.
-    If the query is in English, ask in English.
-    If the system around the user is in Portuguese and the user answer is expected in Portuguese, Portuguese is acceptable.
+    The question must be in Portuguese because it is shown to the user.
+    The reason must be in English because it is internal.
+    Keep JSON keys in English.
 
     Topic guidance:
     These are not fixed templates.
@@ -286,8 +290,8 @@ def build_context_question_prompt(
     * For stock prediction, finance, market forecasting, or asset prediction:
     natural options include review/overview, forecasting methods, asset type, market, time horizon, data source, technical indicators, news sentiment, fundamentals, macroeconomic data, or evaluation metrics.
 
-    * For violence detection:
-    natural options include review/overview, modality, audio, video, text, images, datasets, models, feature extraction, real-time detection, surveillance, mobile deployment, benchmark comparison, or evaluation metrics.
+    * For detection or classification tasks:
+    natural options include review/overview, modality, data type, datasets, models, feature extraction, real-time detection, deployment context, benchmark comparison, or evaluation metrics.
 
     * For medical image classification:
     natural options include review/overview, image type, disease, organ, dataset, model, label noise, robustness, segmentation/classification, clinical validation, or evaluation metrics.
@@ -319,15 +323,15 @@ def build_context_question_prompt(
     Output:
     {{"question":"Na previsão de ações, você quer considerar quais fontes de dados: séries históricas de preços, indicadores técnicos, notícias, sentimento de mercado, fundamentos financeiros ou dados macroeconômicos?","reason":"the question asks about data sources that are relevant to stock prediction"}}
 
-    User query: violence detection
-    Reason from previous assessment: the query is broad and does not specify whether the focus is a general review or a specific modality
+    User query: fraud detection
+    Reason from previous assessment: the query is broad and does not specify whether the focus is a general review or a specific data type
     Output:
-    {{"question":"Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?","reason":"the modality strongly changes the search terms for violence detection"}}
+    {{"question":"Você quer uma visão geral sobre detecção de fraude ou quer focar em algo mais específico, como transações financeiras, grafos, dados tabulares, modelos, datasets ou métricas de avaliação?","reason":"the data type and research focus strongly change the search terms for fraud detection"}}
 
-    User query: audio violence detection
+    User query: image-based plant disease detection
     Reason from previous assessment: the query has a modality, but does not specify whether the user wants a general review or a specific research focus
     Output:
-    {{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em algo mais específico, como datasets, modelos, extração de características, métricas de avaliação, detecção em tempo real ou comparação entre abordagens?","reason":"audio already defines the modality, so the question focuses on the missing research direction"}}
+    {{"question":"Você quer uma visão geral sobre detecção de doenças em plantas por imagem ou quer focar em algo mais específico, como datasets, modelos, extração de características, métricas de avaliação, implantação em campo ou comparação entre abordagens?","reason":"image already defines the modality, so the question focuses on the missing research direction"}}
 
     User query: noisy data in medical image classification
     Reason from previous assessment: noise may refer to labels, images, acquisition, or robustness
@@ -391,145 +395,222 @@ def build_rewrite_user_query_prompt(
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
-You are preparing an academic paper search.
+You are preparing an academic paper search in Computer Science or computationally-oriented research.
 
 Task:
 Create one clearer academic search topic from the initial query and the user's clarification answer.
 
-This output is not a list of academic search queries.
-It is the refined user topic that will later be passed to initial query planning.
+This output is not a list of search queries.
+It is one refined user topic that will later be passed to academic query planning.
+
+Input language:
+The initial query, clarification question, and user answer may be in Portuguese, English, or mixed language.
+
+Output language:
+
+* proposed_query must be in English because it will be used for academic paper search.
+* message must be in Portuguese because it is shown to the user.
+* reason must be in English because it is internal.
+* JSON keys must stay in English.
 
 Main goal:
-Extract only the information that the user actually provided.
-Combine it with the initial query to create one clearer academic topic.
+Combine the initial query with the user's clarification answer.
+Use only information actually provided by the user.
+Do not invent methods, datasets, metrics, domains, applications, modalities, or restrictions.
 
-Rules:
-- Create only one clearer academic topic.
-- Do not create multiple queries.
-- Do not invent information.
-- Do not invent methods, datasets, metrics, domains, applications, or restrictions.
-- Use only the initial query and the user's answer.
-- Use the clarification question only to understand what the user's answer refers to.
-- Preserve the main topic from the initial query.
-- Preserve useful technical terms from the initial query.
-- If the initial query is in English and contains academic terms, prefer keeping the proposed query in English.
-- If the user answer is in Portuguese but the initial query is in English, translate only the clarification intent, not the whole topic unnecessarily.
-- If the user asks for a general view, overview, review, survey, introduction, or to understand the area, make the proposed query review-oriented.
-- If the user says "geral", "visão geral", "quero entender", "quero aprender", "overview", "review", or similar, do not add a specific method.
-- If the user selected one option from the question, include that option only if it is actually present in the user's answer.
-- If the user's answer is vague but indicates general interest, produce a broad review/overview topic.
-- If the user's answer adds a specific focus, include that focus.
-- Do not make the topic more specific than the user's answer allows.
-- Keep the proposed query short, clear, and searchable.
+Core rules:
 
-Important:
-A general answer should not be rewritten as a specific method.
+* Create exactly one refined academic topic.
+* Do not create multiple search queries.
+* Preserve the main topic from the initial query.
+* Preserve useful technical terms from the initial query.
+* Use the clarification question only to understand what the user's answer refers to.
+* Translate the user's intended meaning into English for proposed_query.
+* Keep proposed_query short, clear, and searchable.
+* Do not make the topic more specific than the user's answer allows.
+* If the user's answer adds a specific focus, include that focus.
+* If the user's answer is broad or general, keep the refined topic broad.
+* If the user selects one option from the question, include only that selected option.
+* If the user rejects an option, do not include it.
+* If the user's answer is ambiguous but indicates general interest, produce a review-oriented topic.
 
-Examples of general answers:
-- "geral"
-- "visão geral"
-- "quero entender a área"
-- "quero aprender mais"
-- "overview"
-- "review"
-- "survey"
-- "state of the art"
+General/overview intent:
+If the user says something equivalent to:
 
-When the answer is general, use expressions such as:
-- overview of [topic]
-- review of [topic]
-- survey on [topic]
-- state of the art in [topic]
-- visão geral sobre [topic]
-- revisão da área de [topic]
+* "geral"
+* "visão geral"
+* "quero entender a área"
+* "introdução"
+* "revisão"
+* "survey"
+* "estado da arte"
+* "panorama"
+* "não sei ainda"
+* "quero algo mais amplo"
 
-Bad behavior:
-- Do not turn "visão geral" into a specific method.
-- Do not add "voice analysis" unless the user mentioned voice.
-- Do not add "facial recognition" unless the user mentioned face or images.
-- Do not add "movement detection" unless the user mentioned motion, video, or movement.
-- Do not add "deep learning" unless the user mentioned it or it was already in the initial query.
-- Do not add a dataset unless the user mentioned it.
-- Do not add evaluation metrics unless the user mentioned them.
+Then produce a review-oriented proposed_query using expressions such as:
+
+* review of [topic]
+* survey on [topic]
+* overview of [topic]
+* state of the art in [topic]
+
+Do not add a specific method when the user asks for a general overview.
+
+Computer Science scope:
+Prefer refined topics that are clearly useful for academic search in Computer Science or computational research, such as:
+
+* artificial intelligence
+* machine learning
+* deep learning
+* natural language processing
+* computer vision
+* audio processing
+* signal processing
+* information retrieval
+* recommendation systems
+* cybersecurity
+* software engineering
+* databases
+* distributed systems
+* human-computer interaction
+* data science
+* graph learning
+* time series forecasting
+* optimization
+* robotics
+* computational healthcare
+* educational technology
+* computational finance
+* IoT and sensor systems
+
+Do not force the topic into one of these areas unless the initial query or user answer supports it.
+
+Important negative rules:
+
+* Do not add "deep learning" unless the user mentioned it or the initial query already implies it.
+* Do not add "machine learning" unless the topic clearly involves computational modeling or the user selected it.
+* Do not add a dataset unless the user mentioned it.
+* Do not add evaluation metrics unless the user mentioned evaluation or metrics.
+* Do not add a modality such as image, video, audio, text, graph, sensor, or time series unless it appears in the initial query, clarification question, or user answer.
+* Do not add an application domain such as healthcare, finance, education, agriculture, or cybersecurity unless it appears in the initial query or user answer.
+* Do not transform a broad answer into a narrow method.
+* Do not transform a domain answer into a method answer.
+* Do not include unrelated options from examples.
 
 Good behavior examples:
 
-Initial query: detecção de violência por áudio
-Clarification question: Você deseja uma visão geral sobre detecção de violência por áudio ou quer focar em datasets, modelos, métricas ou detecção em tempo real?
-Why the question matters: o usuário precisa escolher entre uma visão geral e um foco específico de pesquisa
-User answer: visão geral
-Output:
-{{"proposed_query":"visão geral sobre detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: visão geral sobre detecção de violência por áudio","reason":"the user asked for a general overview and the initial query already specifies audio violence detection"}}
-
-Initial query: detecção de violência por áudio
-Clarification question: Você deseja uma visão geral sobre detecção de violência por áudio ou quer focar em datasets, modelos, métricas ou detecção em tempo real?
-Why the question matters: o usuário precisa escolher entre uma visão geral e um foco específico de pesquisa
-User answer: quero entender melhor a área
-Output:
-{{"proposed_query":"revisão da área de detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: revisão da área de detecção de violência por áudio","reason":"the user indicated broad learning intent about the area"}}
-
 Initial query: detecção de violência
 Clarification question: Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?
-Why the question matters: a modalidade muda os termos acadêmicos da busca
+Why the question matters: the modality changes the academic search terms
 User answer: áudio
 Output:
-{{"proposed_query":"detecção de violência por áudio","message":"Com base na sua resposta, a busca ficaria: detecção de violência por áudio","reason":"the user specified audio as the modality"}}
+{{"proposed_query":"audio-based violence detection","message":"Com base na sua resposta, a busca ficaria: audio-based violence detection","reason":"the user specified audio as the modality"}}
 
-Initial query: detecção de violência
-Clarification question: Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?
-Why the question matters: a modalidade muda os termos acadêmicos da busca
+Initial query: detecção de violência por áudio
+Clarification question: Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em datasets, modelos, extração de características, métricas ou detecção em tempo real?
+Why the question matters: the topic has a modality, but the research focus is still open
 User answer: visão geral
 Output:
-{{"proposed_query":"visão geral sobre detecção de violência","message":"Com base na sua resposta, a busca ficaria: visão geral sobre detecção de violência","reason":"the user asked for a general overview without specifying a modality"}}
+{{"proposed_query":"audio-based violence detection review","message":"Com base na sua resposta, a busca ficaria: audio-based violence detection review","reason":"the user asked for a general overview and the initial query already specifies audio-based violence detection"}}
 
 Initial query: previsão de ações
 Clarification question: Você quer uma visão geral sobre previsão de ações ou quer focar em métodos, fontes de dados, horizonte temporal ou métricas?
-Why the question matters: diferentes focos levam a diferentes termos acadêmicos de busca
-User answer: quero geral, só entender a área
+Why the question matters: different research focuses lead to different academic search terms
+User answer: quero usar LSTM com notícias e sentimento de mercado
 Output:
-{{"proposed_query":"visão geral sobre previsão de ações","message":"Com base na sua resposta, a busca ficaria: visão geral sobre previsão de ações","reason":"the user requested a general understanding of the research area"}}
-
-Initial query: previsão de ações
-Clarification question: Você quer uma visão geral sobre previsão de ações ou quer focar em métodos, fontes de dados, horizonte temporal ou métricas?
-Why the question matters: diferentes focos levam a diferentes termos acadêmicos de busca
-User answer: LSTM com notícias e sentimento de mercado
-Output:
-{{"proposed_query":"previsão de ações usando LSTM, notícias e sentimento de mercado","message":"Com base na sua resposta, a busca ficaria: previsão de ações usando LSTM, notícias e sentimento de mercado","reason":"the user specified the method and data sources"}}
+{{"proposed_query":"stock price prediction using LSTM, news, and market sentiment","message":"Com base na sua resposta, a busca ficaria: stock price prediction using LSTM, news, and market sentiment","reason":"the user specified the method and data sources"}}
 
 Initial query: dados ruidosos em classificação de imagens médicas
 Clarification question: Você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?
-Why the question matters: diferentes sentidos de ruído levam a diferentes termos acadêmicos de busca
-User answer: revisão geral
-Output:
-{{"proposed_query":"revisão sobre dados ruidosos em classificação de imagens médicas","message":"Com base na sua resposta, a busca ficaria: revisão sobre dados ruidosos em classificação de imagens médicas","reason":"the user asked for a general review of the topic"}}
-
-Initial query: dados ruidosos em classificação de imagens médicas
-Clarification question: Você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?
-Why the question matters: diferentes sentidos de ruído levam a diferentes termos acadêmicos de busca
+Why the question matters: different meanings of noise lead to different academic search terms
 User answer: rótulos ruidosos
 Output:
-{{"proposed_query":"rótulos ruidosos em classificação de imagens médicas","message":"Com base na sua resposta, a busca ficaria: rótulos ruidosos em classificação de imagens médicas","reason":"the user clarified that noisy data refers to label noise"}}
+{{"proposed_query":"label noise in medical image classification","message":"Com base na sua resposta, a busca ficaria: label noise in medical image classification","reason":"the user specified label noise as the focus"}}
 
-Initial query: engenharia de prompt para geração de imagens
-Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
-Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
-User answer: quero uma visão geral da área
+Initial query: engenharia de prompt
+Clarification question: Você quer uma visão geral sobre engenharia de prompt ou quer focar em LLMs, geração de imagens, geração de código, avaliação de prompts ou otimização?
+Why the question matters: prompt engineering can involve different applications and research focuses
+User answer: avaliação de prompts em LLMs
 Output:
-{{"proposed_query":"visão geral sobre engenharia de prompt para geração de imagens","message":"Com base na sua resposta, a busca ficaria: visão geral sobre engenharia de prompt para geração de imagens","reason":"the user requested a general overview of the area"}}
+{{"proposed_query":"prompt evaluation for large language models","message":"Com base na sua resposta, a busca ficaria: prompt evaluation for large language models","reason":"the user specified prompt evaluation and LLMs as the focus"}}
 
-Initial query: engenharia de prompt para geração de imagens
-Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
-Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
-User answer: quero focar em controle de estilo e qualidade visual
+Initial query: recommendation systems
+Clarification question: Você quer uma visão geral sobre sistemas de recomendação ou quer focar em filtragem colaborativa, deep learning, cold start, fairness ou explicabilidade?
+Why the question matters: recommendation systems can be studied through different methods and evaluation concerns
+User answer: cold start
 Output:
-{{"proposed_query":"engenharia de prompt para controle de estilo e qualidade visual em geração de imagens","message":"Com base na sua resposta, a busca ficaria: engenharia de prompt para controle de estilo e qualidade visual em geração de imagens","reason":"the user specified style control and visual quality as the research focus"}}
+{{"proposed_query":"cold start problem in recommendation systems","message":"Com base na sua resposta, a busca ficaria: cold start problem in recommendation systems","reason":"the user specified cold start as the research focus"}}
 
-Initial query: engenharia de prompt para geração de imagens
-Clarification question: Você quer uma visão geral sobre engenharia de prompt para geração de imagens ou quer focar em modelos texto-imagem, qualidade visual, controle de estilo, avaliação de prompts ou técnicas de otimização?
-Why the question matters: engenharia de prompt para geração de imagens pode envolver diferentes focos de pesquisa
-User answer: avaliação de prompts
+Initial query: segurança em APIs
+Clarification question: Você quer uma visão geral sobre segurança em APIs ou quer focar em autenticação, autorização, vulnerabilidades, testes automatizados ou segurança em microsserviços?
+Why the question matters: API security can involve different technical concerns
+User answer: vulnerabilidades em REST APIs
 Output:
-{{"proposed_query":"avaliação de prompts para geração de imagens","message":"Com base na sua resposta, a busca ficaria: avaliação de prompts para geração de imagens","reason":"the user specified prompt evaluation as the focus"}}
+{{"proposed_query":"security vulnerabilities in REST APIs","message":"Com base na sua resposta, a busca ficaria: security vulnerabilities in REST APIs","reason":"the user specified vulnerabilities in REST APIs"}}
+
+Initial query: detecção de malware
+Clarification question: Você quer uma visão geral sobre detecção de malware ou quer focar em análise estática, análise dinâmica, deep learning, Android malware ou datasets?
+Why the question matters: malware detection can vary by platform, method, and data source
+User answer: Android
+Output:
+{{"proposed_query":"Android malware detection","message":"Com base na sua resposta, a busca ficaria: Android malware detection","reason":"the user specified Android as the platform"}}
+
+Initial query: aprendizado federado na saúde
+Clarification question: Você quer uma visão geral sobre aprendizado federado na saúde ou quer focar em privacidade, imagens médicas, prontuários eletrônicos, heterogeneidade dos dados ou segurança?
+Why the question matters: federated learning in healthcare can involve different technical and application focuses
+User answer: privacidade
+Output:
+{{"proposed_query":"privacy in federated learning for healthcare","message":"Com base na sua resposta, a busca ficaria: privacy in federated learning for healthcare","reason":"the user specified privacy as the focus"}}
+
+Initial query: sistemas distribuídos
+Clarification question: Você quer uma visão geral sobre sistemas distribuídos ou quer focar em consenso, tolerância a falhas, escalabilidade, microsserviços ou computação em nuvem?
+Why the question matters: distributed systems is broad and the selected focus changes the search terms
+User answer: consenso
+Output:
+{{"proposed_query":"consensus algorithms in distributed systems","message":"Com base na sua resposta, a busca ficaria: consensus algorithms in distributed systems","reason":"the user specified consensus as the focus"}}
+
+Initial query: bancos de dados vetoriais
+Clarification question: Você quer uma visão geral sobre bancos de dados vetoriais ou quer focar em busca aproximada, indexação, recuperação semântica, RAG ou comparação de desempenho?
+Why the question matters: vector databases can be studied through indexing, retrieval, systems, or applications
+User answer: RAG
+Output:
+{{"proposed_query":"vector databases for retrieval-augmented generation","message":"Com base na sua resposta, a busca ficaria: vector databases for retrieval-augmented generation","reason":"the user specified RAG as the application context"}}
+
+Initial query: graph neural networks
+Clarification question: Você quer uma visão geral sobre graph neural networks ou quer focar em classificação de nós, predição de links, grafos dinâmicos, explicabilidade ou aplicações?
+Why the question matters: graph neural networks have different tasks and application directions
+User answer: link prediction
+Output:
+{{"proposed_query":"link prediction using graph neural networks","message":"Com base na sua resposta, a busca ficaria: link prediction using graph neural networks","reason":"the user specified link prediction as the task"}}
+
+Initial query: UX em aplicativos educacionais
+Clarification question: Você quer uma visão geral sobre UX em aplicativos educacionais ou quer focar em usabilidade, acessibilidade, engajamento, avaliação com usuários ou design centrado no usuário?
+Why the question matters: HCI and UX research can vary by evaluation focus
+User answer: avaliação com usuários
+Output:
+{{"proposed_query":"user evaluation of educational applications in human-computer interaction","message":"Com base na sua resposta, a busca ficaria: user evaluation of educational applications in human-computer interaction","reason":"the user specified user evaluation in the context of educational applications"}}
+
+Initial query: séries temporais
+Clarification question: Você quer uma visão geral sobre séries temporais ou quer focar em previsão, classificação, detecção de anomalias, transformers ou aplicações específicas?
+Why the question matters: time series research can involve different tasks and methods
+User answer: detecção de anomalias
+Output:
+{{"proposed_query":"time series anomaly detection","message":"Com base na sua resposta, a busca ficaria: time series anomaly detection","reason":"the user specified anomaly detection as the task"}}
+
+Initial query: classificação de sentimentos
+Clarification question: Você quer uma visão geral sobre análise de sentimentos ou quer focar em redes sociais, avaliações de produtos, português, transformers ou métricas de avaliação?
+Why the question matters: sentiment analysis can vary by domain, language, method, and evaluation focus
+User answer: português
+Output:
+{{"proposed_query":"sentiment analysis in Portuguese","message":"Com base na sua resposta, a busca ficaria: sentiment analysis in Portuguese","reason":"the user specified Portuguese as the language"}}
+
+Initial query: LLM hallucination
+Clarification question: Você quer uma visão geral sobre alucinação em LLMs ou quer focar em causas, métricas de avaliação, mitigação, RAG, verificação factual ou benchmarks?
+Why the question matters: LLM hallucination can be studied through causes, evaluation, mitigation, and system design
+User answer: mitigação com RAG
+Output:
+{{"proposed_query":"mitigating hallucination in large language models using retrieval-augmented generation","message":"Com base na sua resposta, a busca ficaria: mitigating hallucination in large language models using retrieval-augmented generation","reason":"the user specified mitigation with RAG"}}
 
 Initial query:
 {initial_query}
@@ -543,8 +624,9 @@ Why the question matters:
 User answer:
 {user_answer}
 
-Exact shape:
+Required JSON shape:
 {{"proposed_query":"clear academic search topic","message":"Com base na sua resposta, a busca ficaria: ...","reason":"short reason"}}
+
 """
 
     return PromptSpec(
@@ -578,6 +660,10 @@ def build_rewrite_from_user_revision_prompt(
                 - Do not create multiple queries.
                 - This is still the refined user topic, not generated academic
                   search queries.
+                - The proposed_query must be in English because it will be used for academic paper search.
+                - The message must be in Portuguese because it is shown to the user.
+                - The reason must be in English because it is internal.
+                - Keep JSON keys in English.
 
                 Initial query: {initial_query}
                 Previous proposed query: {proposed_query}
@@ -587,7 +673,7 @@ def build_rewrite_from_user_revision_prompt(
                 User revision: {user_revision}
 
                 Exact shape:
-                {{"proposed_query":"clear academic search topic","reason":"short reason"}}
+                {{"proposed_query":"clear academic search topic","message":"Com base na sua revisão, a busca ficaria: ...","reason":"short reason"}}
             """
 
     return PromptSpec(
@@ -601,11 +687,11 @@ def build_rewrite_from_user_revision_prompt(
     )
 
 def build_initial_queries_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for initial search queries."""
+    """Prompt for initial exploratory search queries."""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
-You are planning academic search queries.
+You are planning the first round of academic paper search queries.
 
 User topic:
 {context.user_query}
@@ -614,145 +700,187 @@ Minimum year:
 {context.min_year}
 
 Task:
-Create 1 to 3 short academic search queries for finding academic papers.
+Create 3 to 5 short exploratory academic search queries for finding papers.
+
+This is the first search round.
+The goal is broad but controlled exploration.
+Do not make the queries too specific too early.
 
 The user topic was already assessed or refined before reaching this step.
 Do not ask questions here.
 Do not reassess whether the topic has enough context.
 
 Core goal:
-Generate search queries that are faithful to the user's topic.
+Generate simple search queries that are faithful to the user's topic.
+The first round should cover the main topic, close synonyms, and obvious academic variants.
 Do not add search intentions that the user did not express.
 
-Query planning strategy:
+Initial search strategy:
 - Query 1 should be the closest academic version of the user topic.
-- Query 2 may use academic synonyms or equivalent terms.
-- Query 3 may explore a related angle only if it is clearly implied by the topic.
+- Query 2 should use a close synonym or equivalent academic wording.
+- Query 3 should use another common term for the same task/problem.
+- Query 4 may add a very broad computational or application context only if it is naturally implied.
+- Query 5 may add review/survey intent only if the user explicitly asked for overview, review, survey, state of the art, or general understanding.
+
+Important:
+The first round should avoid overfitting.
+Do not start with highly specific datasets, metrics, architectures, benchmarks, or narrow subproblems unless the user mentioned them.
 
 Before writing the queries, analyze internally:
 - What is the user's main topic?
 - What task, method, modality, domain, application, or problem is explicitly present?
-- What terms would retrieve relevant papers?
+- What are the closest academic synonyms?
+- What terms would retrieve relevant Computer Science or computational papers?
 - What terms would cause topic drift?
 - What should not be added because the user did not mention it?
 
 Important rules:
 - Return only the final JSON object.
 - Do not include your internal analysis.
-- The "queries" array must contain 1 to 3 non-empty strings.
+- The "queries" array must contain 3 to 5 non-empty strings.
+- Academic search queries must be in English, even if the user topic is in Portuguese.
+- Translate only the meaning needed for academic search.
+- The reason must be in English because it is internal.
 - Every query must preserve the user's main intent.
 - Keep each query short and searchable.
 - Prefer precise academic terms.
-- Do not invent datasets, methods, domains, metrics, years, restrictions, or review intent.
-- Do not add "review", "survey", "overview", "state of the art", "taxonomy", or "systematic review" unless the user topic explicitly asks for review/overview/general understanding.
+- Prefer Computer Science or computational wording when faithful to the topic.
+- Do not invent datasets, methods, metrics, years, restrictions, or narrow applications.
+- Do not add "review", "survey", "overview", "state of the art", "taxonomy", or "systematic review" unless the user explicitly asked for review/overview/general understanding.
 - Do not add "deep learning", "machine learning", "benchmark", "datasets", or "evaluation" unless stated or clearly implied by the topic.
-- Do not broaden a specific topic into a generic field.
+- Do not broaden a specific topic into an unrelated generic field.
 - Do not narrow a broad topic into one specific method unless the method was mentioned.
 
 Review intent rules:
 Only use review-oriented terms when the user topic contains words such as:
 review, survey, overview, literature review, systematic review, state of the art,
-visão geral, revisão, panorama, estado da arte, quero entender, quero aprender.
+general overview, introduction, panorama, visão geral, revisão, estado da arte,
+or equivalent expressions for overview, review, or general understanding.
 
 If the user did not ask for review, do not add review/survey terms.
 
 Modality rules:
-- If the topic contains a modality, preserve that modality in every query.
-- If the topic is about audio, every query must include an audio-related term such as audio, audio-only, acoustic, sound, or speech.
-- If the topic is about audio-only violence detection, avoid video-only, image-only, text-only, multimodal, and audio-visual interpretations.
-- When the topic is violence detection in audio and the user did not explicitly ask for multimodal search, treat it as audio-only.
-- For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech, deepfake.
+- If the topic contains a modality, preserve that modality in every query when possible.
+- Explicit modalities include audio, speech, sound, acoustic signal, image, video, text, graph, time series, sensor data, tabular data, network traffic, source code, logs, and multimodal data.
+- If the topic does not contain an explicit modality, do not invent one.
+- Do not turn one modality into another.
+- If the topic contains a method, domain, task, dataset type, restriction, or application, preserve it.
+- If a modality is required, use close variants of the same modality, not unrelated modalities.
+
+First-round behavior:
+Good first-round queries are broad and close to the topic.
+Bad first-round queries are too narrow, too technical, or based on assumptions.
 
 Bad behavior:
-- Do not turn "detecção de violência em áudio" into "deepfake detection".
-- Do not turn "detecção de violência em áudio" into "video surveillance violence detection".
-- Do not turn an audio-only topic into multimodal or audio-visual search.
+- Do not add a specific model if the user did not mention it.
+- Do not add a specific dataset if the user did not mention it.
+- Do not add a specific metric if the user did not mention it.
+- Do not add a specific domain if the user did not mention it.
+- Do not add multimodal, deep learning, benchmark, dataset, or evaluation terms unless stated or clearly implied.
 - Do not add review/survey if the user only described the topic.
 - Do not copy examples unless they fit the current topic.
 
 Examples:
-The examples below are illustrative.
-Use them to understand how to preserve intent.
 
-User topic: detecção de violência em áudio
+User topic: audio violence detection
 Output:
 {{"queries":[
+  "audio violence detection",
+  "audio-based violence detection",
   "audio-only violence detection",
   "acoustic violence detection",
   "sound-based violence detection"
-],"reason":"the topic specifies violence detection using audio, without explicit review intent"}}
+],"reason":"the first round explores close audio-based variants of the same violence detection topic without adding specific methods or datasets"}}
 
-User topic: visão geral sobre detecção de violência em áudio
+User topic: audio violence detection overview
 Output:
 {{"queries":[
-  "audio-only violence detection review",
-  "survey of acoustic violence detection",
-  "sound-based violence detection methods"
-],"reason":"the user explicitly requested a general overview of audio-based violence detection"}}
+  "audio violence detection review",
+  "audio-based violence detection survey",
+  "audio-only violence detection overview",
+  "acoustic violence detection methods",
+  "sound-based violence detection state of the art"
+],"reason":"the user requested an overview, so the first round includes review-oriented variants while preserving the audio modality"}}
 
-User topic: detecção de violência em áudio usando deep learning
+User topic: plant disease detection
 Output:
 {{"queries":[
-  "audio violence detection deep learning",
-  "deep learning for acoustic violence detection",
-  "neural networks for sound-based violence detection"
-],"reason":"the topic specifies audio modality and deep learning methods"}}
+  "plant disease detection",
+  "automatic plant disease detection",
+  "computational plant disease detection",
+  "plant disease classification",
+  "plant disease recognition"
+],"reason":"the first round explores close variants of the plant disease detection task without inventing a modality or method"}}
 
-User topic: violence detection
+User topic: image-based plant disease detection
 Output:
 {{"queries":[
-  "violence detection",
-  "violent event detection",
-  "automatic violence detection"
-],"reason":"the topic is broad and does not specify modality or review intent"}}
+  "image-based plant disease detection",
+  "plant disease detection using images",
+  "plant disease image classification",
+  "leaf image disease detection",
+  "computer vision plant disease detection"
+],"reason":"the topic specifies image-based detection, so all queries preserve the image/computer vision direction"}}
 
-User topic: violence detection review
+User topic: graph neural networks for fraud detection
 Output:
 {{"queries":[
-  "violence detection review",
-  "violent event detection survey",
-  "automatic violence detection methods"
-],"reason":"the user explicitly requested review intent"}}
+  "graph neural networks for fraud detection",
+  "GNN fraud detection",
+  "graph-based fraud detection using neural networks",
+  "fraud detection with graph learning",
+  "graph representation learning for fraud detection"
+],"reason":"the topic specifies graph neural networks and fraud detection, so the first round explores close graph-learning variants"}}
 
-User topic: previsão de ações usando LSTM e sentimento de notícias
+User topic: cybersecurity intrusion detection
+Output:
+{{"queries":[
+  "cybersecurity intrusion detection",
+  "network intrusion detection",
+  "intrusion detection systems",
+  "attack detection systems",
+  "computational intrusion detection"
+],"reason":"the topic specifies a cybersecurity detection task, so the first round explores common intrusion detection terminology"}}
+
+User topic: stock price prediction using LSTM and news sentiment
 Output:
 {{"queries":[
   "stock price prediction using LSTM and news sentiment",
-  "financial time series forecasting with LSTM and sentiment analysis",
-  "stock market forecasting news sentiment recurrent neural networks"
-],"reason":"the topic specifies stock prediction, LSTM, and news sentiment"}}
+  "stock market forecasting with LSTM and sentiment analysis",
+  "financial time series forecasting using news sentiment",
+  "stock prediction using recurrent neural networks and sentiment",
+  "news sentiment stock price forecasting"
+],"reason":"the topic specifies the task, method, and data source, so the first round preserves all three"}}
 
-User topic: visão geral sobre previsão de ações
+User topic: noisy labels in medical image classification
 Output:
 {{"queries":[
-  "stock price prediction review",
-  "stock market forecasting survey",
-  "financial time series forecasting methods"
-],"reason":"the user requested a general overview of stock prediction research"}}
-
-User topic: rótulos ruidosos em classificação de imagens médicas
-Output:
-{{"queries":[
-  "label noise in medical image classification",
+  "noisy labels in medical image classification",
   "medical image classification with noisy labels",
-  "robust learning under label noise in medical imaging"
-],"reason":"the topic specifies label noise and medical image classification"}}
+  "label noise in medical imaging",
+  "robust medical image classification under label noise",
+  "learning with noisy labels in medical image classification"
+],"reason":"the topic specifies label noise and medical image classification, so the first round explores close robust-learning variants"}}
 
-User topic: engenharia de prompt para geração de imagens
+User topic: prompt engineering for image generation
 Output:
 {{"queries":[
   "prompt engineering for image generation",
   "prompt design for text-to-image generation",
-  "text-to-image prompt optimization"
-],"reason":"the topic specifies prompt engineering for image generation without review intent"}}
+  "text-to-image prompt engineering",
+  "prompt optimization for image generation",
+  "prompting techniques for text-to-image models"
+],"reason":"the topic specifies prompt engineering for image generation, so the first round uses close text-to-image variants"}}
 
-User topic: visão geral sobre engenharia de prompt para geração de imagens
+User topic: LLM hallucination mitigation with RAG
 Output:
 {{"queries":[
-  "prompt engineering for image generation review",
-  "text-to-image prompt engineering survey",
-  "prompt design methods for text-to-image generation"
-],"reason":"the user requested a general overview of prompt engineering for image generation"}}
+  "LLM hallucination mitigation with RAG",
+  "mitigating hallucinations in large language models using retrieval-augmented generation",
+  "retrieval-augmented generation for hallucination reduction",
+  "RAG for factuality in large language models",
+  "reducing hallucinations in LLMs with retrieval"
+],"reason":"the topic specifies LLM hallucination mitigation and RAG, so the first round preserves both"}}
 
 Exact shape:
 {{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"short reason"}}
@@ -768,24 +896,114 @@ Exact shape:
         },
     )
 
+def build_plan_filters_prompt(context: SearchContext) -> PromptSpec:
+    """Prompt for planning semantic validation filters."""
+
+    text = f"""Return only one JSON object. No markdown. No explanation.
+
+You are planning semantic filters for academic paper validation.
+
+User refined topic:
+{context.user_query}
+
+Task:
+Extract explicit semantic validation criteria from the refined topic.
+These filters will be used internally before validating candidate papers.
+
+Language rule:
+All filter values, reasons, rules, concepts, and examples must be in English.
+Keep JSON keys in English.
+
+Core goal:
+Separate what is mandatory from what is only useful or preferred.
+Do not generate search queries here.
+Do not validate papers here.
+
+Rules:
+- Extract criteria only from the refined topic.
+- Do not invent a focus that the user did not provide.
+- Do not add datasets, methods, metrics, domains, modalities, or applications unless they are stated or clearly implied.
+- The primary_intent must describe the main academic task or problem.
+- required_concepts must list concepts that must be present for a paper to be relevant.
+- required_modality must list required input modality terms only when the topic explicitly implies a modality.
+- Explicit modalities include audio, speech, sound, acoustic signal, image, video, text, graph, time series, sensor data, tabular data, network traffic, source code, logs, and multimodal data.
+- If the refined topic does not contain an explicit modality, required_modality must be an empty array.
+- positive_signals must list terms or concepts that are good evidence of relevance.
+- negative_signals must list terms or concepts that indicate mismatch.
+- hard_exclusion_rules must be strict rules that force exclusion during validation.
+- soft_preferences must list useful but non-mandatory aspects.
+- validation_priority must be an ordered list of what matters most when validating papers.
+- Use an empty array for any list field that has no applicable items.
+
+Computer Science validation guidance:
+Plan filters so validation prefers papers with clear Computer Science or strongly computational contributions.
+A paper should be relevant only when there is clear evidence in the title, abstract, keywords, or venue that it includes a central computational contribution.
+
+Positive computational signals include:
+- algorithms, models, computational methods, systems, architectures, pipelines, frameworks, software, implementation, or computational tools;
+- areas such as Artificial Intelligence, Machine Learning, Deep Learning, Data Science, Information Retrieval, NLP, Computer Vision, Audio Processing, Signal Processing, Cybersecurity, Software Engineering, Databases, Distributed Systems, HCI, or related areas;
+- empirical evaluation of computational techniques, including benchmarks, datasets, metrics, experiments, performance comparison, ablation studies, or system validation;
+- application of computational methods in domains such as healthcare, education, law, finance, agriculture, industry, or social media, when the computational method is central.
+
+General hard exclusions:
+The hard_exclusion_rules field must include these general exclusions when they apply:
+- Exclude papers without a clear Computer Science or computational contribution.
+- Exclude papers that only share superficial keywords with the refined topic.
+- Exclude papers from non-computational domains when computation is not central to the method, model, system, dataset, or technical evaluation.
+- Exclude conceptual, legal, ethical, social, or historical papers without a concrete computational contribution.
+- Exclude papers that mention technology only casually.
+- Exclude papers that do not match the user's primary search intent.
+
+Example:
+User refined topic: noisy labels in medical image classification
+Output:
+{{"primary_intent":"computational methods for medical image classification under noisy labels","required_concepts":["noisy labels","medical image classification"],"required_modality":["image","medical image"],"positive_signals":["robust learning","label noise","classification model","medical imaging dataset","experimental evaluation"],"negative_signals":["image denoising","clinical diagnosis only","legal analysis","policy discussion","non-computational review"],"hard_exclusion_rules":["Exclude if the paper has no clear Computer Science or computational contribution.","Exclude if the paper is not about noisy labels or label noise in medical image classification.","Exclude if the paper does not study an algorithm, model, method, dataset, system, or technical evaluation.","Exclude if the paper only shares superficial keywords with the refined topic."],"soft_preferences":["methods","datasets","benchmarks","evaluation metrics","model robustness"],"validation_priority":["computer science contribution","primary task match","required concepts","required modality","hard exclusions","research usefulness"]}}
+
+Required JSON shape:
+{{"primary_intent":"main academic task/problem","required_concepts":["concept that must be present"],"required_modality":["required modality if any"],"positive_signals":["terms or concepts that indicate relevance"],"negative_signals":["terms or concepts that indicate mismatch"],"hard_exclusion_rules":["rules that force exclusion"],"soft_preferences":["useful but not mandatory preferences"],"validation_priority":["ordered list of what matters most"]}}
+"""
+
+    return PromptSpec(
+        name="plan_filters",
+        version=PLAN_FILTERS_PROMPT_VERSION,
+        text=text,
+        metadata={
+            "output_format": "json",
+            "purpose": "semantic_filter_planning",
+        },
+    )
 
 def build_validate_papers_prompt(
     context: SearchContext,
     papers: list[Paper],
     search_feedback: dict[str, object] | None = None,
+    search_filters: dict[str, object] | None = None,
 ) -> PromptSpec:
     """Prompt for semantic validation of candidate papers."""
 
     feedback = search_feedback or {}
+    filters = search_filters or {}
     revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
     positive_constraints = _feedback_list(feedback, "positive_constraints")
     negative_constraints = _feedback_list(feedback, "negative_constraints")
     query_strategy = _feedback_text(feedback, "query_strategy") or "none"
+    primary_intent = _feedback_text(filters, "primary_intent") or "none"
+    required_concepts = _feedback_list(filters, "required_concepts")
+    required_modality = _feedback_list(filters, "required_modality")
+    positive_signals = _feedback_list(filters, "positive_signals")
+    negative_signals = _feedback_list(filters, "negative_signals")
+    hard_exclusion_rules = _feedback_list(filters, "hard_exclusion_rules")
+    soft_preferences = _feedback_list(filters, "soft_preferences")
+    validation_priority = _feedback_list(filters, "validation_priority")
     paper_block = _format_candidate_papers(papers)
+    candidate_count = len(papers)
+    candidate_label = "candidate paper" if candidate_count == 1 else "candidate papers"
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
-You are validating academic search results semantically.
+You are validating the current batch of academic search results semantically.
+
+The current batch contains exactly {candidate_count} {candidate_label}.
 
 User search intent:
 {context.user_query}
@@ -802,46 +1020,74 @@ Negative constraints:
 Query strategy:
 {query_strategy}
 
-Candidate papers:
+Planned semantic filters:
+Primary intent: {primary_intent}
+Required concepts: {_format_items(required_concepts)}
+Required modality: {_format_items(required_modality)}
+Positive signals: {_format_items(positive_signals)}
+Negative signals: {_format_items(negative_signals)}
+Hard exclusion rules: {_format_items(hard_exclusion_rules)}
+Soft preferences: {_format_items(soft_preferences)}
+Validation priority: {_format_items(validation_priority)}
+
+Current candidate batch:
 {paper_block}
 
 Task:
-For each candidate paper, decide whether it is relevant to the user's search intent.
+Validate only the {candidate_count} {candidate_label} in the current candidate batch.
+For each candidate in this batch, decide whether it is relevant to the user's search intent.
 
 Critical output rule:
-You must return exactly one validation object for every candidate paper listed above.
+You must return exactly {candidate_count} validation object(s) inside validated_papers.
+Return exactly one validation object for each candidate in the current batch.
+If the current batch contains one paper, validated_papers must still be a list with exactly one object.
 Do not skip any candidate.
-Do not add papers that are not in the candidate list.
+Do not add papers that are not in the current candidate batch.
 The paper_id must exactly match the candidate paper id.
+Do not use title, DOI, URL, index, or generated identifiers as paper_id.
 Each validation object must be based only on that same candidate paper.
 
-Critical evidence rule:
-Do not mix information between papers.
-Do not use the title or abstract of one paper to justify another paper.
-Do not invent claims, methods, architectures, datasets, or modalities.
-If a detail is not present in the title or abstract, do not mention it.
-
-Core validation rule:
-Semantic relevance matters more than keyword overlap.
-A paper is relevant only if it helps answer the user's actual search intent.
+Completeness rule:
+A summary alone is not enough.
+The validated_papers list is mandatory.
+Every candidate in the current batch must appear in validated_papers.
+If evidence is weak or the abstract is missing, still return a validation object and judge cautiously.
 
 For each paper, check:
-1. Does it match the main topic?
-2. Does it match the task or research problem?
-3. Does it match the requested modality, domain, method, or constraint?
-4. Does it violate any negative constraint?
-5. Would it actually help the user with this search?
+1. Apply validation_priority in order.
+2. Is there clear evidence of a Computer Science or strongly computational contribution?
+3. Does it match the primary_intent?
+4. Does it satisfy required_concepts?
+5. Does it satisfy required_modality, if any?
+6. Does it violate any hard_exclusion_rules, negative_signals, or negative constraints?
+7. Would it actually help the user with this search?
 
 Rules:
 - Evaluate semantic relation to the user's intent, not superficial word overlap.
 - Use the current revised topic as the main reference.
+- Use the planned semantic filters as explicit validation criteria.
+- Apply validation_priority before assigning high, medium, low, or reject.
+- First verify clear evidence of a Computer Science or strongly computational contribution in the title, abstract, source, venue-like metadata, or available paper metadata.
+- A computational contribution may be an algorithm, model, computational method, system, architecture, pipeline, framework, software, implementation, tool, dataset, benchmark, metric, experiment, performance comparison, ablation study, or system validation.
+- Papers may apply computational methods to healthcare, education, law, finance, agriculture, industry, social media, or other domains, but the computational method must be central.
+- Exclude papers that are mainly legal, political, sociological, philosophical, historical, medical, business, conceptual, ethical, or social unless they contain a concrete computational method, model, system, dataset, or technical evaluation.
+- Exclude papers that mention technology only casually.
+- The relevance_reason for included papers must cite concrete computational evidence from the title or abstract, such as a method, model, algorithm, system, dataset, task, or evaluation.
+- Do not invent a computational contribution that is not supported by the title, abstract, or available metadata.
+- Treat primary_intent as mandatory when it is not "none".
+- Treat required_concepts, required_modality, and hard_exclusion_rules as mandatory criteria.
 - Treat positive constraints as desired signals.
 - Treat negative constraints as hard exclusions.
+- Treat negative_signals as mismatch indicators.
+- Exclude a paper if it violates any hard_exclusion_rule, even if it contains similar keywords.
+- Write relevance_reason, mismatch_reason, useful_for, summary, and any internal reason text in English.
+- Keep JSON keys in English.
 - Keep the explanation short and based only on title, abstract, year, source, and URL.
 - Do not invent information absent from the title or abstract.
 - If the abstract is missing, judge cautiously using only title and metadata.
 - If the paper title/abstract is about a different task, domain, or modality, exclude it.
-- If the paper only shares generic terms such as detection, audio, violence, survey, or deep learning but studies another topic, exclude it.
+- If the paper only shares an isolated term from the query but studies another meaning, domain, or non-computational topic, exclude it.
+- Do not include a paper only because it matches one positive signal while failing a required concept, required modality, or hard exclusion rule.
 
 Relevance labels:
 - high: directly related to the revised topic and useful for the user's intent.
@@ -854,81 +1100,66 @@ Decision labels:
 - include: use for low only if it is clearly useful background.
 - exclude: use for reject.
 - exclude: use for any paper that clearly violates negative constraints.
+- exclude: use for any paper that fails required_concepts, required_modality, or hard_exclusion_rules.
 
-Audio-only violence detection rules:
-If the user's topic is about violence detection in audio, audio-only violence detection, acoustic violence detection, or sound-based violence detection:
-
-Include papers when:
-- the title or abstract clearly indicates audio-based, acoustic, sound-based, audio-signal, speech-signal, or audio-only violence/aggression detection;
-- or the title/abstract clearly says violence detection is performed using audio signals.
-
-Exclude papers when:
-- the paper is mainly about video surveillance;
-- the paper is mainly about images, visual features, CCTV frames, cameras, or computer vision;
-- the paper is mainly about audio-visual, audiovisual, multimodal, or multimedia detection;
-- the paper is mainly about deepfake detection;
-- the paper is mainly about misinformation, fake news, hate speech, ChatGPT, generic LLMs, or AI-generated content;
-- the paper mentions audio only as one possible format but does not study audio-based violence detection.
-
-Important examples for audio-only violence detection:
-- Title: "In-Car Violence Detection Based on the Audio Signal"
-  Expected: high/include, because it directly studies violence detection based on audio signal.
-- Title: "Efficient Violence Detection in Surveillance"
-  Expected: reject/exclude if title or abstract indicates video surveillance, cameras, frames, or visual detection.
-- Title: "A Survey on the Detection and Impacts of Deepfakes in Visual, Audio, and Textual Formats"
-  Expected: reject/exclude, because it is about deepfake detection, not audio-based violence detection.
-- Title: "Deepfake detection using deep learning methods: A systematic and comprehensive review"
-  Expected: reject/exclude, because it is about deepfake detection.
-- Title: "ETHOS: a multi-label hate speech detection dataset"
-  Expected: reject/exclude, because it is about hate speech/text detection, not audio violence detection.
-- Title: "Multimodal Audio-Visual Violence Detection in Surveillance Systems"
-  Expected: reject/exclude when the user asked for audio-only, because it is multimodal/audio-visual.
+Computer Science validation guidance:
+1. Check for a clear computational contribution.
+   If there is no algorithm, model, method, system, software, dataset, benchmark, experiment, or technical evaluation, exclude the paper.
+2. Check primary_intent.
+   If the paper has a computational contribution but solves a different main task or problem, exclude it.
+3. Check required_concepts.
+   If a mandatory concept is missing or used with a different meaning, exclude it.
+4. Check required_modality only when required_modality is not empty.
+   If the required modality is missing or only mentioned casually, exclude it.
+5. Apply hard_exclusion_rules, negative_signals, and negative constraints.
+   If any strict exclusion applies, exclude the paper.
+6. Only after those checks, classify the paper as high, medium, or low.
 
 General examples:
 
-User search intent: visão geral sobre detecção de fake news
-Current revised topic: revisão sobre detecção de fake news
+User search intent: fake news detection overview
+Current revised topic: fake news detection review
 Candidate title: A Survey on Fake News Detection: Methods, Datasets, and Evaluation
 Expected:
 {{"relevance":"high","decision":"include","relevance_reason":"The paper is a survey about fake news detection methods, datasets, and evaluation.","mismatch_reason":"","useful_for":"overview"}}
 
-User search intent: visão geral sobre detecção de fake news
-Current revised topic: revisão sobre detecção de fake news
+User search intent: fake news detection overview
+Current revised topic: fake news detection review
 Candidate title: Fake News and Political Polarization: A Sociological Essay
 Expected:
 {{"relevance":"low","decision":"exclude","relevance_reason":"The paper discusses fake news, but not fake news detection methods.","mismatch_reason":"It focuses on sociological effects rather than detection.","useful_for":"not useful"}}
 
-User search intent: previsão de ações usando LSTM e sentimento de notícias
+User search intent: stock price prediction using LSTM and news sentiment
 Current revised topic: stock price prediction using LSTM and news sentiment
 Candidate title: Stock Price Forecasting Using LSTM Networks and Financial News Sentiment
 Expected:
 {{"relevance":"high","decision":"include","relevance_reason":"The paper matches the task, method, and data source.","mismatch_reason":"","useful_for":"methods and evaluation"}}
 
-User search intent: previsão de ações usando LSTM e sentimento de notícias
+User search intent: stock price prediction using LSTM and news sentiment
 Current revised topic: stock price prediction using LSTM and news sentiment
 Candidate title: Weather Forecasting Using LSTM and Sentiment Analysis
 Expected:
 {{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper uses similar methods but is about weather forecasting, not stock prediction.","useful_for":"not useful"}}
 
-User search intent: rótulos ruidosos em classificação de imagens médicas
+User search intent: noisy labels in medical image classification
 Current revised topic: label noise in medical image classification
 Candidate title: Robust Learning with Noisy Labels for Medical Image Classification
 Expected:
 {{"relevance":"high","decision":"include","relevance_reason":"The paper directly addresses noisy labels in medical image classification.","mismatch_reason":"","useful_for":"methods and robustness"}}
 
-User search intent: rótulos ruidosos em classificação de imagens médicas
+User search intent: noisy labels in medical image classification
 Current revised topic: label noise in medical image classification
 Candidate title: Denoising MRI Images under Acquisition Noise
 Expected:
 {{"relevance":"low","decision":"exclude","relevance_reason":"The paper is related to medical image noise, but not label noise in classification.","mismatch_reason":"It focuses on acquisition/image noise rather than noisy labels.","useful_for":"not useful"}}
 
-User search intent: engenharia de prompt para geração de imagens
+User search intent: prompt engineering for image generation
 Current revised topic: prompt engineering for image generation
 Candidate title: Prompt Engineering for Text-to-Image Generation Models
 Expected:
 {{"relevance":"high","decision":"include","relevance_reason":"The paper directly matches prompt engineering for image generation.","mismatch_reason":"","useful_for":"methods"}}
 
-User search intent: engenharia de prompt para geração de imagens
+User search intent: prompt engineering for image generation
 Current revised topic: prompt engineering for image generation
 Candidate title: Prompt Engineering for Code Generation with Large Language Models
 Expected:
@@ -965,10 +1196,10 @@ def build_refine_queries_prompt(
     used_queries: list[str],
     search_feedback: dict[str, object] | None = None,
 ) -> PromptSpec:
-    """Prompt for refining search queries."""
+    """Prompt for refining search queries after feedback and validation."""
 
     evidence = _format_validated_papers(validated_papers[:10])
-    used = "; ".join(used_queries[-6:]) or "none"
+    used = "; ".join(used_queries[-8:]) or "none"
     feedback = search_feedback or {}
     revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
     positive_constraints = _feedback_list(feedback, "positive_constraints")
@@ -976,25 +1207,151 @@ def build_refine_queries_prompt(
     query_strategy = _feedback_text(feedback, "query_strategy") or "none"
 
     text = f"""Return only one JSON object. No markdown. No explanation.
-                The "queries" array must contain 1 to 3 non-empty strings.
-                Create new academic search queries. Do not repeat used queries.
-                Use this revised topic in the query text: {revised_topic}
-                Minimum year: {context.min_year}
-                Used queries: {used}
-                Validated-paper evidence: {evidence}
-                Positive constraints: {_format_items(positive_constraints)}
-                Negative constraints: {_format_items(negative_constraints)}
-                Query strategy: {query_strategy}
-                Every query must follow the revised topic, positive constraints, negative constraints, and query strategy.
-                Treat negative constraints as hard exclusions.
-                When the topic is audio violence detection and the user did not explicitly ask for multimodal search, treat it as audio-only.
-                For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech.
-                Good audio-only query examples:
-                - audio-only violence detection review
-                - acoustic event detection violence aggression audio-only
-                - sound-based violence detection surveillance review
-                Exact shape: {{"queries":["{revised_topic} method"],"reason":"new angle"}}
-            """
+
+You are planning a new round of academic search queries after previous search results were validated.
+
+This is not the first search round.
+Your job is to refine the search direction using:
+1. the revised topic;
+2. the user's feedback;
+3. the positive constraints;
+4. the negative constraints;
+5. the previous validated-paper evidence;
+6. the used queries.
+
+User original topic:
+{context.user_query}
+
+Current revised topic:
+{revised_topic}
+
+Minimum year:
+{context.min_year}
+
+Used queries:
+{used}
+
+Validated-paper evidence:
+{evidence}
+
+Positive constraints:
+{_format_items(positive_constraints)}
+
+Negative constraints:
+{_format_items(negative_constraints)}
+
+Query strategy:
+{query_strategy}
+
+Task:
+Create 1 to 3 new academic search queries.
+The new queries must improve the search based on what worked and what failed.
+Do not repeat used queries.
+
+Core refinement strategy:
+- If previous results were too broad, make the new queries more specific.
+- If previous results matched the wrong domain, add terms that enforce the correct domain.
+- If previous results matched the wrong modality, add terms that enforce the correct modality.
+- If previous results matched the wrong task, add terms that enforce the correct task.
+- If previous results matched the wrong method, avoid that method and use the intended one.
+- If previous results were mostly irrelevant due to keyword ambiguity, use more precise academic terminology.
+- If previous results were useful but narrow, explore a close synonym or adjacent wording.
+- If the user gave feedback, follow it more strongly than the previous evidence.
+- If positive constraints exist, include at least one of them in every query when natural.
+- If negative constraints exist, avoid those terms and avoid queries likely to retrieve them.
+
+Rules:
+- Return only the final JSON object.
+- The "queries" array must contain 1 to 3 non-empty strings.
+- Academic search queries must be in English, even if the user topic is in Portuguese.
+- Translate only the meaning needed for academic search.
+- The reason must be in English because it is internal.
+- Every query must follow the revised topic.
+- Every query must respect positive constraints, negative constraints, and query strategy.
+- Treat negative constraints as hard exclusions.
+- Preserve any modality, method, domain, task, dataset type, application, or restriction that appears in the revised topic or constraints.
+- If no modality is present in the revised topic or constraints, do not invent one.
+- Do not invent methods, datasets, metrics, domains, modalities, applications, or review intent.
+- Prefer Computer Science or computational search terms when they are faithful to the revised topic.
+- Avoid terms from negative constraints.
+- Avoid broad queries that caused irrelevant results before.
+- Do not generate a query that is only a minor word-order variation of a used query.
+- Do not copy examples unless they fit the current topic.
+
+How to use validated-paper evidence:
+- Included high/medium papers indicate useful terminology.
+- Rejected papers indicate terms, domains, modalities, or meanings to avoid.
+- Do not use rejected paper titles as positive query inspiration.
+- Use mismatch reasons to avoid the same mistake.
+- If evidence is "none", rely on the revised topic and constraints.
+
+Good refinement behavior examples:
+
+Case:
+Revised topic: audio-based violence detection
+Used queries: audio violence detection; automatic violence detection
+Negative constraints: video; visual; multimodal; hate speech
+Validated evidence shows many video-surveillance papers.
+Output:
+{{"queries":[
+  "audio-only violence detection",
+  "acoustic aggression detection",
+  "sound-based violent event detection"
+],"reason":"the previous search drifted toward visual or multimodal violence detection, so the new queries enforce the audio modality"}}
+
+Case:
+Revised topic: plant disease detection
+Used queries: plant disease detection; automatic plant disease detection
+Positive constraints: image-based; leaf images
+Negative constraints: sensor data; genomic analysis
+Validated evidence shows many agriculture-domain papers without computer vision.
+Output:
+{{"queries":[
+  "image-based plant disease detection",
+  "leaf image disease classification",
+  "computer vision plant disease recognition"
+],"reason":"the user or evidence indicates that the intended direction is image-based detection, so the new queries enforce the visual modality"}}
+
+Case:
+Revised topic: stock price prediction using LSTM and news sentiment
+Used queries: stock price prediction; financial forecasting
+Negative constraints: cryptocurrency; portfolio optimization
+Validated evidence shows generic finance forecasting papers.
+Output:
+{{"queries":[
+  "stock price prediction using LSTM and news sentiment",
+  "news sentiment stock forecasting recurrent neural networks",
+  "financial time series prediction with LSTM and sentiment analysis"
+],"reason":"the previous search was too broad, so the new queries enforce the method and data source"}}
+
+Case:
+Revised topic: prompt evaluation for large language models
+Used queries: prompt engineering; LLM prompting
+Positive constraints: evaluation; benchmark
+Negative constraints: image generation; code generation
+Validated evidence shows many prompt design papers without evaluation.
+Output:
+{{"queries":[
+  "prompt evaluation for large language models",
+  "benchmarking prompts in large language models",
+  "evaluation methods for LLM prompting"
+],"reason":"the previous search retrieved broad prompt engineering papers, so the new queries focus on evaluation"}}
+
+Case:
+Revised topic: label noise in medical image classification
+Used queries: noisy data medical imaging; medical image noise
+Negative constraints: acquisition noise; denoising; image enhancement
+Validated evidence shows many image denoising papers.
+Output:
+{{"queries":[
+  "label noise in medical image classification",
+  "learning with noisy labels in medical imaging",
+  "robust classification under label noise in medical images"
+],"reason":"the previous search confused image noise with label noise, so the new queries enforce noisy labels"}}
+
+Required JSON shape:
+{{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"short reason"}}
+"""
 
     return PromptSpec(
         name="refine_queries",
@@ -1005,7 +1362,6 @@ def build_refine_queries_prompt(
             "purpose": "query_refinement",
         },
     )
-
 
 def build_feedback_analysis_prompt(
     original_query: str,
@@ -1038,21 +1394,25 @@ Rules:
 - Do not generate search queries here.
 - Do not copy the raw feedback into query_strategy.
 - Convert the feedback into a cleaner academic revised_topic.
+- Write revised_topic, positive_constraints, negative_constraints, query_strategy, and reason in English.
+- The reason must be in English because it is internal.
+- Keep JSON keys in English.
 - Put desired concepts, modalities, and terms in positive_constraints.
 - Put excluded concepts, modalities, and terms in negative_constraints.
 - Make query_strategy an actionable sentence for the next query-planning step.
 - Keep each constraint short and searchable.
 - Preserve the original research intent unless the user explicitly changes it.
-- If the user says the search should be audio only, include audio-only/audio-based/acoustic/sound-based terms as positive constraints.
+- If the user specifies a modality, method, domain, dataset type, or technical restriction, include it in positive_constraints.
 - Use included and excluded papers as evidence for what worked and what failed.
-- If the user excludes multimodal or audio-visual directions, include related negative constraints such as multimodal, audio-visual, audiovisual, video, visual, image, text, and hate speech when relevant.
+- If the user excludes a modality, method, domain, paper type, or interpretation, include concise related terms in negative_constraints when relevant.
+- When the user asks for Computer Science papers, make query_strategy focus on algorithms, models, computational methods, systems, datasets, benchmarks, or technical evaluation.
 
 Expected case:
-Original user query: audio violence detection
-Current refined query: audio violence detection
-User feedback: na verdade era para ser sobre audio apenas, sem ser multimodal e sem ser audio-visual
+Original user query: fake news detection
+Current refined query: fake news detection review
+User feedback: I want Computer Science papers with detection models or datasets, not political essays or sociological discussions
 Output:
-{{"revised_topic":"audio-only violence detection review","positive_constraints":["audio-only","audio-based","acoustic","sound-based violence detection"],"negative_constraints":["multimodal","audio-visual","audiovisual","video","visual","image","text","hate speech"],"query_strategy":"Search only for papers where violence detection is based on audio signals. Avoid multimedia, visual surveillance, video-based violence detection, and text-based hate speech detection.","reason":"The user clarified that the intended modality is audio only, while the previous ranked papers included multimodal, video, vision-based, and text-related papers."}}
+{{"revised_topic":"computational fake news detection review","positive_constraints":["fake news detection models","machine learning","NLP","datasets","technical evaluation"],"negative_constraints":["political essay","sociology","legal analysis","conceptual discussion","non-computational review"],"query_strategy":"Search for Computer Science papers on fake news detection that present models, algorithms, datasets, benchmarks, or technical evaluation. Avoid political, sociological, legal, or conceptual papers without a computational contribution.","reason":"The user clarified that relevant papers should have a central computational contribution rather than only discussing fake news as a social or political topic."}}
 
 Required JSON shape:
 {{"revised_topic":"clean revised academic topic","positive_constraints":["constraint"],"negative_constraints":["constraint"],"query_strategy":"actionable query strategy","reason":"short reason"}}
@@ -1088,6 +1448,7 @@ def build_continue_decision_prompt(
                 New useful validated papers: {last_new_useful_count}
                 Validated-paper evidence: {evidence}
                 The "continue" value must be true or false.
+                The reason must be in English because it is internal.
                 Exact shape: {{"continue":true,"reason":"short reason"}}
             """
 

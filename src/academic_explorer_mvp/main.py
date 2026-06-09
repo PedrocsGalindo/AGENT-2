@@ -77,7 +77,6 @@ def print_summary(state: SearchState) -> None:
         for error in errors:
             print(f"  - {error}")
 
-    print("\nTop artigos validados:")
     if not relevant:
         print("  Nenhum artigo validado como relevante.")
         return

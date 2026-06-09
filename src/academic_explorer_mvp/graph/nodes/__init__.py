@@ -22,6 +22,7 @@ from academic_explorer_mvp.graph.nodes.query_enrichment_nodes import (
     rewrite_user_query_after_clarification,
 )
 from academic_explorer_mvp.graph.nodes.search_nodes import (
+    plan_filters,
     plan_queries, 
     search_papers,
     deduplicate_papers,
@@ -44,6 +45,7 @@ __all__ = [
     "interpret_paper_feedback",
     "interpret_query_confirmation",
     "normalize_papers",
+    "plan_filters",
     "plan_queries",
     "route_after_paper_feedback",
     "route_after_context_initialization",

@@ -12,12 +12,16 @@ from academic_explorer_mvp.llm.prompts import (
     build_continue_decision_prompt,
     build_feedback_analysis_prompt,
     build_initial_queries_prompt,
+    build_plan_filters_prompt,
     build_refine_queries_prompt,
     build_rewrite_from_user_revision_prompt,
     build_rewrite_user_query_prompt,
     build_validate_papers_prompt,
 )
 
+def _chunked(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
 
 @dataclass(frozen=True)
 class QueryAssessment:
@@ -69,6 +73,32 @@ class SearchFeedbackAnalysis:
     negative_constraints: list[str]
     query_strategy: str
     reason: str
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """Structured semantic filters for paper validation."""
+
+    primary_intent: str
+    required_concepts: list[str]
+    required_modality: list[str]
+    positive_signals: list[str]
+    negative_signals: list[str]
+    hard_exclusion_rules: list[str]
+    soft_preferences: list[str]
+    validation_priority: list[str]
+
+    def to_state(self) -> dict[str, object]:
+        return {
+            "primary_intent": self.primary_intent,
+            "required_concepts": self.required_concepts,
+            "required_modality": self.required_modality,
+            "positive_signals": self.positive_signals,
+            "negative_signals": self.negative_signals,
+            "hard_exclusion_rules": self.hard_exclusion_rules,
+            "soft_preferences": self.soft_preferences,
+            "validation_priority": self.validation_priority,
+        }
 
 
 @dataclass(frozen=True)
@@ -251,6 +281,61 @@ class QueryPlanner:
             )
         return queries
 
+    def plan_filters(self, context: SearchContext) -> SearchFilters:
+        """Ask the local model for semantic filters before paper validation."""
+
+        payload = self._expect_dict(
+            "semantic filter planning",
+            self._generate_json(
+                "semantic filter planning",
+                build_plan_filters_prompt(context),
+            ),
+        )
+
+        return SearchFilters(
+            primary_intent=self._required_string(
+                payload,
+                "primary_intent",
+                "semantic filter planning",
+            )[:300],
+            required_concepts=self._required_string_list(
+                payload,
+                "required_concepts",
+                "semantic filter planning",
+            ),
+            required_modality=self._required_string_list(
+                payload,
+                "required_modality",
+                "semantic filter planning",
+            ),
+            positive_signals=self._required_string_list(
+                payload,
+                "positive_signals",
+                "semantic filter planning",
+            ),
+            negative_signals=self._required_string_list(
+                payload,
+                "negative_signals",
+                "semantic filter planning",
+            ),
+            hard_exclusion_rules=self._required_string_list(
+                payload,
+                "hard_exclusion_rules",
+                "semantic filter planning",
+                max_length=300,
+            ),
+            soft_preferences=self._required_string_list(
+                payload,
+                "soft_preferences",
+                "semantic filter planning",
+            ),
+            validation_priority=self._required_string_list(
+                payload,
+                "validation_priority",
+                "semantic filter planning",
+            ),
+        )
+
     def refine_queries(
         self,
         context: SearchContext,
@@ -335,8 +420,44 @@ class QueryPlanner:
         context: SearchContext,
         papers: list[Paper],
         search_feedback: dict[str, object] | None = None,
+        search_filters: dict[str, object] | None = None,
+        validation_batch_size: int = 2,
     ) -> PaperValidationResult:
         """Ask the local model to semantically validate candidate papers."""
+
+        if validation_batch_size < 1:
+            raise ValueError("validation_batch_size must be greater than or equal to 1.")
+
+        all_validations: list[PaperValidation] = []
+        summaries: list[str] = []
+
+        for batch_index, papers_batch in enumerate(_chunked(papers, validation_batch_size), start=1):
+            result = self._validate_papers_batch(
+                context=context,
+                papers=papers_batch,
+                search_feedback=search_feedback or {},
+                search_filters=search_filters or {},
+                batch_index=batch_index,
+            )
+
+            all_validations.extend(result.validated_papers)
+
+            if result.summary:
+                summaries.append(result.summary)
+
+        return PaperValidationResult(
+            validated_papers=all_validations,
+            summary=" | ".join(summaries) if summaries else "model did not provide a summary",
+        )
+    def _validate_papers_batch(
+        self,
+        context: SearchContext,
+        papers: list[Paper],
+        search_feedback: dict[str, object],
+        search_filters: dict[str, object],
+        batch_index: int,
+    ) -> PaperValidationResult:
+        """Validate one batch of papers."""
 
         payload = self._expect_dict(
             "paper validation",
@@ -345,11 +466,14 @@ class QueryPlanner:
                 build_validate_papers_prompt(
                     context=context,
                     papers=papers,
-                    search_feedback=search_feedback or {},
+                    search_feedback=search_feedback,
+                    search_filters=search_filters,
                 ),
             ),
         )
+
         raw_items = payload.get("validated_papers")
+
         if not isinstance(raw_items, list):
             raise RuntimeError(
                 "Local model returned JSON, but it did not contain the required "
@@ -357,12 +481,16 @@ class QueryPlanner:
             )
 
         validations: list[PaperValidation] = []
+
         for raw_item in raw_items:
             if not isinstance(raw_item, dict):
                 continue
+
             paper_id = self._safe_string(raw_item, "paper_id")
+
             if not paper_id:
                 continue
+
             validations.append(
                 PaperValidation(
                     paper_id=paper_id,
@@ -381,9 +509,9 @@ class QueryPlanner:
 
         return PaperValidationResult(
             validated_papers=validations,
-            summary=self._optional_string(payload, "summary") or "model did not provide a summary",
+            summary=self._optional_string(payload, "summary")
+            or f"model did not provide a summary for validation batch {batch_index}",
         )
-
     def should_continue(
         self,
         context: SearchContext,
@@ -521,6 +649,7 @@ class QueryPlanner:
         payload: dict[str, object],
         key: str,
         step_name: str,
+        max_length: int = 120,
     ) -> list[str]:
         value = payload.get(key)
         if not isinstance(value, list):
@@ -537,7 +666,7 @@ class QueryPlanner:
             if not text or key_text in seen:
                 continue
             seen.add(key_text)
-            strings.append(text[:120])
+            strings.append(text[:max_length])
         return strings
 
     def _normalize_relevance(self, value: str) -> str:

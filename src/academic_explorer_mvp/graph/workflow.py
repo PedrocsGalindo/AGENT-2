@@ -55,6 +55,7 @@ def build_graph(config: AppConfig):
     )
     graph.add_node("commit_enriched_query", nodes.commit_enriched_query)
     ## SEARCH 
+    graph.add_node("plan_filters", lambda state: nodes.plan_filters(state, planner))
     graph.add_node("plan_queries", lambda state: nodes.plan_queries(state, planner))
     graph.add_node("search_papers", lambda state: nodes.search_papers(state, search_service))
     graph.add_node("normalize_papers", lambda state: nodes.normalize_papers(state, normalizer))
@@ -79,6 +80,7 @@ def build_graph(config: AppConfig):
             "handle_query_confirmation_or_revision": "handle_query_confirmation_or_revision",
             "handle_paper_feedback": "handle_paper_feedback",
             "analyze_search_feedback": "analyze_search_feedback",
+            "plan_filters": "plan_filters",
             "plan_queries": "plan_queries",
             "search_papers": "search_papers",
             "wait_for_user": "wait_for_user",
@@ -89,7 +91,7 @@ def build_graph(config: AppConfig):
         "enough_context_query",
         nodes.route_after_initial_assessment,
         {
-            "ready_to_search": "plan_queries",
+            "ready_to_search": "plan_filters",
             "needs_clarification": "ask_context_question",
         },
     )
@@ -105,6 +107,7 @@ def build_graph(config: AppConfig):
     )
     graph.add_edge("commit_enriched_query", "enough_context_query")
 
+    graph.add_edge("plan_filters", "plan_queries")
     graph.add_edge("plan_queries", "wait_for_user")
     graph.add_edge("search_papers", "normalize_papers")
     graph.add_edge("normalize_papers", "deduplicate_papers")
@@ -121,7 +124,7 @@ def build_graph(config: AppConfig):
             "finalize": "finalize",
         },
     )
-    graph.add_edge("analyze_search_feedback", "plan_queries")
+    graph.add_edge("analyze_search_feedback", "plan_filters")
     graph.add_edge("wait_for_user", END)
     graph.add_edge("finalize", END)
     return graph.compile()

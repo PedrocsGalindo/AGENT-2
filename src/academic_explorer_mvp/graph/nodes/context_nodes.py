@@ -47,6 +47,19 @@ SEARCH_FEEDBACK_DEFAULTS: dict[str, object] = {
 }
 
 
+SEARCH_FILTERS_DEFAULTS: dict[str, object] = {
+    "stage": "idle",
+    "primary_intent": None,
+    "required_concepts": [],
+    "required_modality": [],
+    "positive_signals": [],
+    "negative_signals": [],
+    "hard_exclusion_rules": [],
+    "soft_preferences": [],
+    "validation_priority": [],
+}
+
+
 PAUSE_STOP_REASONS = {
     "awaiting clarification answer",
     "awaiting query confirmation",
@@ -86,6 +99,7 @@ def initialize_context(state: SearchState) -> SearchState:
     new_state["query_preview"] = _query_preview(new_state)
     new_state["paper_feedback"] = _paper_feedback(new_state)
     new_state["search_feedback"] = _search_feedback(new_state)
+    new_state["search_filters"] = _search_filters(new_state)
     return new_state
 
 
@@ -138,6 +152,15 @@ def _search_feedback(state: SearchState) -> dict[str, object]:
     return {**SEARCH_FEEDBACK_DEFAULTS, **feedback}
 
 
+def _search_filters(state: SearchState) -> dict[str, object]:
+    """Return semantic filter substate with defaults applied."""
+
+    filters = state.get("search_filters", {})
+    if not isinstance(filters, dict):
+        filters = {}
+    return {**SEARCH_FILTERS_DEFAULTS, **filters}
+
+
 def set_query_enrichment(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with query enrichment updates applied."""
 
@@ -167,6 +190,14 @@ def set_search_feedback(state: SearchState, **updates: object) -> SearchState:
 
     new_state: SearchState = dict(state)
     new_state["search_feedback"] = {**_search_feedback(state), **updates}
+    return new_state
+
+
+def set_search_filters(state: SearchState, **updates: object) -> SearchState:
+    """Return a new state with semantic filter updates applied."""
+
+    new_state: SearchState = dict(state)
+    new_state["search_filters"] = {**_search_filters(state), **updates}
     return new_state
 
 

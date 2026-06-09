@@ -34,3 +34,4 @@ class SearchState(TypedDict, total=False):
     query_preview: dict[str, object]
     paper_feedback: dict[str, object]
     search_feedback: dict[str, object]
+    search_filters: dict[str, object]

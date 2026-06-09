@@ -39,7 +39,7 @@ def route_after_context_initialization(state: SearchState) -> str:
         return "analyze_search_feedback"
 
     if feedback_stage == "feedback_analyzed":
-        return "plan_queries"
+        return "plan_filters"
 
     if feedback_stage in {"awaiting_paper_feedback", "unclear_paper_feedback"}:
         if _state_text(feedback.get("pending_answer")):
@@ -66,7 +66,7 @@ def route_after_context_initialization(state: SearchState) -> str:
         return "rewrite_user_query_after_clarification"
 
     if stage == "ready_to_search":
-        return "plan_queries"
+        return "plan_filters"
 
     return "enough_context_query"
 

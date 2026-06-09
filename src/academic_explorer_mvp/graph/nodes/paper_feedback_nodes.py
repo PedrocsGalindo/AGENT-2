@@ -161,6 +161,7 @@ def analyze_search_feedback(state: SearchState, planner: QueryPlanner) -> Search
         query_strategy=analysis.query_strategy,
         reason=analysis.reason,
     )
+    new_state["search_filters"] = {"stage": "idle"}
     new_state = set_paper_feedback(
         new_state,
         stage="feedback_analyzed",
@@ -176,14 +177,12 @@ def _build_feedback_message(
     excluded_papers: list[dict[str, object]],
     summary: str,
 ) -> str:
-    lines = ["Top artigos validados semanticamente:"]
-
+    lines = []
     if summary:
         lines.extend(["", f"Resumo da validacao: {summary}"])
-
     if not relevant_papers:
         lines.append("  Nenhum artigo validado como relevante.")
-    for position, item in enumerate(relevant_papers[:10], start=1):
+    for position, item in enumerate(relevant_papers, start=1):
         paper = item.get("paper")
         if paper is None:
             continue
