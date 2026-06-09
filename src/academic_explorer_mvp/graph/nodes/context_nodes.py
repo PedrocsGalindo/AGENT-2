@@ -21,20 +21,36 @@ QUERY_ENRICHMENT_DEFAULTS: dict[str, object] = {
 }
 
 
+QUERY_PREVIEW_DEFAULTS: dict[str, object] = {
+    "stage": "idle",
+    "round": 0,
+}
+
+
 PAPER_FEEDBACK_DEFAULTS: dict[str, object] = {
     "stage": "idle",
     "answer": None,
     "pending_answer": None,
     "status": None,
     "message": None,
-    "restriction": None,
     "round": 0,
+}
+
+
+SEARCH_FEEDBACK_DEFAULTS: dict[str, object] = {
+    "stage": "idle",
+    "revised_topic": None,
+    "positive_constraints": [],
+    "negative_constraints": [],
+    "query_strategy": None,
+    "reason": None,
 }
 
 
 PAUSE_STOP_REASONS = {
     "awaiting clarification answer",
     "awaiting query confirmation",
+    "awaiting query preview",
     "awaiting paper feedback",
 }
 
@@ -55,6 +71,10 @@ def initialize_context(state: SearchState) -> SearchState:
     new_state.setdefault("normalized_papers", [])
     new_state.setdefault("deduplicated_papers", [])
     new_state.setdefault("ranked_papers", [])
+    new_state.setdefault("validated_papers", [])
+    new_state.setdefault("relevant_papers", [])
+    new_state.setdefault("excluded_papers", [])
+    new_state.setdefault("validation_summary", None)
     new_state.setdefault("known_paper_ids", [])
     new_state.setdefault("last_new_paper_count", 0)
     new_state.setdefault("last_new_paper_ids", [])
@@ -63,7 +83,9 @@ def initialize_context(state: SearchState) -> SearchState:
     new_state.setdefault("stop_reason", None)
     new_state.setdefault("model_continue_reason", None)
     new_state["query_enrichment"] = _query_enrichment(new_state)
+    new_state["query_preview"] = _query_preview(new_state)
     new_state["paper_feedback"] = _paper_feedback(new_state)
+    new_state["search_feedback"] = _search_feedback(new_state)
     return new_state
 
 
@@ -98,6 +120,24 @@ def _paper_feedback(state: SearchState) -> dict[str, object]:
     return {**PAPER_FEEDBACK_DEFAULTS, **feedback}
 
 
+def _query_preview(state: SearchState) -> dict[str, object]:
+    """Return query preview substate with defaults applied."""
+
+    preview = state.get("query_preview", {})
+    if not isinstance(preview, dict):
+        preview = {}
+    return {**QUERY_PREVIEW_DEFAULTS, **preview}
+
+
+def _search_feedback(state: SearchState) -> dict[str, object]:
+    """Return search feedback analysis substate with defaults applied."""
+
+    feedback = state.get("search_feedback", {})
+    if not isinstance(feedback, dict):
+        feedback = {}
+    return {**SEARCH_FEEDBACK_DEFAULTS, **feedback}
+
+
 def set_query_enrichment(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with query enrichment updates applied."""
 
@@ -106,11 +146,27 @@ def set_query_enrichment(state: SearchState, **updates: object) -> SearchState:
     return new_state
 
 
+def set_query_preview(state: SearchState, **updates: object) -> SearchState:
+    """Return a new state with query preview updates applied."""
+
+    new_state: SearchState = dict(state)
+    new_state["query_preview"] = {**_query_preview(state), **updates}
+    return new_state
+
+
 def set_paper_feedback(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with paper feedback updates applied."""
 
     new_state: SearchState = dict(state)
     new_state["paper_feedback"] = {**_paper_feedback(state), **updates}
+    return new_state
+
+
+def set_search_feedback(state: SearchState, **updates: object) -> SearchState:
+    """Return a new state with search feedback analysis updates applied."""
+
+    new_state: SearchState = dict(state)
+    new_state["search_feedback"] = {**_search_feedback(state), **updates}
     return new_state
 
 

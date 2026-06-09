@@ -2,22 +2,21 @@
 
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.services.query_planner import QueryPlanner
-from academic_explorer_mvp.services.ranker import PaperRanker
 from academic_explorer_mvp.graph.nodes.context_nodes import _context
 
-def decide_next_step(state: SearchState, planner: QueryPlanner, ranker: PaperRanker) -> SearchState:
+def decide_next_step(state: SearchState, planner: QueryPlanner) -> SearchState:
     """Validate whether the graph should continue."""
 
     context = _context(state)
-    ranked = state.get("ranked_papers", [])
-    good_papers = [item for item in ranked if item.score >= ranker.good_score_threshold]
+    relevant = state.get("relevant_papers", [])
+    good_papers = [item for item in relevant if item.get("relevance") in {"high", "medium"}]
     min_good_papers = 10
     new_state: SearchState = dict(state)
     if state.get("round_number", 0) >= context.max_rounds:
         new_state["stop_reason"] = "max rounds reached"
         return new_state
     if len(good_papers) >= min_good_papers:
-        new_state["stop_reason"] = f"found at least {min_good_papers} good scored papers"
+        new_state["stop_reason"] = f"found at least {min_good_papers} relevant validated papers"
         return new_state
     if state.get("last_new_useful_count", 0) == 0:
         new_state["stop_reason"] = "last round did not bring useful new papers"
@@ -26,7 +25,7 @@ def decide_next_step(state: SearchState, planner: QueryPlanner, ranker: PaperRan
     decision = planner.should_continue(
         context=context,
         round_number=state.get("round_number", 0),
-        ranked_papers=ranked,
+        validated_papers=state.get("validated_papers", []),
         last_new_paper_count=state.get("last_new_paper_count", 0),
         last_new_useful_count=state.get("last_new_useful_count", 0),
     )

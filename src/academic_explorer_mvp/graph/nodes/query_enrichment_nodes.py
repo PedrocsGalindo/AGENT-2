@@ -7,6 +7,7 @@ from academic_explorer_mvp.graph.nodes.context_nodes import (
     PAUSE_STOP_REASONS,
     _context,
     _paper_feedback,
+    _query_preview,
     _query_enrichment,
     _required_text,
     set_query_enrichment,
@@ -20,13 +21,24 @@ def route_after_context_initialization(state: SearchState) -> str:
 
     enrichment = _query_enrichment(state)
     stage = enrichment.get("stage")
+    preview = _query_preview(state)
+    preview_stage = preview.get("stage")
     feedback = _paper_feedback(state)
     feedback_stage = feedback.get("stage")
+
+    if preview_stage == "shown" and state.get("pending_queries"):
+        return "search_papers"
+
+    if preview_stage == "awaiting_query_preview":
+        return "wait_for_user"
 
     if feedback_stage == "accepted":
         return "finalize"
 
-    if feedback_stage in {"feedback_applied", "ready_for_feedback_search"}:
+    if feedback_stage == "needs_feedback_analysis":
+        return "analyze_search_feedback"
+
+    if feedback_stage == "feedback_analyzed":
         return "plan_queries"
 
     if feedback_stage in {"awaiting_paper_feedback", "unclear_paper_feedback"}:

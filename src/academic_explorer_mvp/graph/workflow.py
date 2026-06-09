@@ -4,14 +4,12 @@ from academic_explorer_mvp.config import AppConfig
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph import nodes
-from academic_explorer_mvp.graph.routers import route_after_decision
 from academic_explorer_mvp.llm.local_model import LocalModel
 from academic_explorer_mvp.providers.openalex import OpenAlexProvider
 from academic_explorer_mvp.providers.semantic_scholar import SemanticScholarProvider
 from academic_explorer_mvp.services.deduplicator import PaperDeduplicator
 from academic_explorer_mvp.services.normalizer import PaperNormalizer
 from academic_explorer_mvp.services.query_planner import QueryPlanner
-from academic_explorer_mvp.services.ranker import PaperRanker
 from academic_explorer_mvp.services.search_service import SearchService
 
 
@@ -42,7 +40,6 @@ def build_graph(config: AppConfig):
     )
     normalizer = PaperNormalizer()
     deduplicator = PaperDeduplicator()
-    ranker = PaperRanker()
     graph = StateGraph(SearchState)
     ## INITIAL QUERY
     graph.add_node("initialize_context", nodes.initialize_context)
@@ -62,10 +59,11 @@ def build_graph(config: AppConfig):
     graph.add_node("search_papers", lambda state: nodes.search_papers(state, search_service))
     graph.add_node("normalize_papers", lambda state: nodes.normalize_papers(state, normalizer))
     graph.add_node("deduplicate_papers", lambda state: nodes.deduplicate_papers(state, deduplicator))
-    graph.add_node("rank_papers", lambda state: nodes.rank_papers(state, ranker))
+    graph.add_node("validate_papers", lambda state: nodes.validate_papers(state, planner))
     graph.add_node("ask_paper_feedback", nodes.ask_paper_feedback)
     graph.add_node("handle_paper_feedback", nodes.handle_paper_feedback)
-    graph.add_node("decide_next_step", lambda state: nodes.decide_next_step(state, planner, ranker))
+    graph.add_node("analyze_search_feedback", lambda state: nodes.analyze_search_feedback(state, planner))
+    graph.add_node("decide_next_step", lambda state: nodes.decide_next_step(state, planner))
     ##
     graph.add_node("finalize", lambda state: state)
     graph.add_node("wait_for_user", lambda state: state)
@@ -80,7 +78,9 @@ def build_graph(config: AppConfig):
             "rewrite_user_query_after_clarification": "rewrite_user_query_after_clarification",
             "handle_query_confirmation_or_revision": "handle_query_confirmation_or_revision",
             "handle_paper_feedback": "handle_paper_feedback",
+            "analyze_search_feedback": "analyze_search_feedback",
             "plan_queries": "plan_queries",
+            "search_papers": "search_papers",
             "wait_for_user": "wait_for_user",
             "finalize": "finalize",
         },
@@ -105,28 +105,23 @@ def build_graph(config: AppConfig):
     )
     graph.add_edge("commit_enriched_query", "enough_context_query")
 
-    graph.add_edge("plan_queries", "search_papers")
+    graph.add_edge("plan_queries", "wait_for_user")
     graph.add_edge("search_papers", "normalize_papers")
     graph.add_edge("normalize_papers", "deduplicate_papers")
-    graph.add_edge("deduplicate_papers", "rank_papers")
-    graph.add_edge("rank_papers", "ask_paper_feedback")
+    graph.add_edge("deduplicate_papers", "validate_papers")
+    graph.add_edge("validate_papers", "decide_next_step")
+    graph.add_edge("decide_next_step", "ask_paper_feedback")
     graph.add_edge("ask_paper_feedback", "wait_for_user")
     graph.add_conditional_edges(
         "handle_paper_feedback",
         nodes.route_after_paper_feedback,
         {
             "wait_for_user": "wait_for_user",
+            "analyze_search_feedback": "analyze_search_feedback",
             "finalize": "finalize",
         },
     )
-    graph.add_conditional_edges(
-        "decide_next_step",
-        route_after_decision,
-        {
-            "continue": "plan_queries",
-            "finalize": "finalize",
-        },
-    )
+    graph.add_edge("analyze_search_feedback", "plan_queries")
     graph.add_edge("wait_for_user", END)
     graph.add_edge("finalize", END)
     return graph.compile()
@@ -188,6 +183,27 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             state["stop_reason"] = None
             continue
 
+        preview = state.get("query_preview", {}) or {}
+        preview_stage = preview.get("stage")
+
+        if preview_stage == "awaiting_query_preview":
+            queries = state.get("pending_queries", [])
+            round_number = preview.get("round") or state.get("round_number", 0) + 1
+
+            print(f"\nQueries que serao usadas na rodada {round_number}:")
+            if queries:
+                for query in queries:
+                    print(f"  - {query}")
+            else:
+                print("  Nenhuma query planejada.")
+
+            state = _update_query_preview(
+                state,
+                stage="shown",
+            )
+            state["stop_reason"] = None
+            continue
+
         feedback = state.get("paper_feedback", {}) or {}
         feedback_stage = feedback.get("stage")
 
@@ -217,19 +233,6 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             state["stop_reason"] = None
             continue
 
-        if feedback_stage == "feedback_applied":
-            message = feedback.get("message")
-            if message:
-                print("\n" + str(message))
-
-            state = _update_paper_feedback(
-                state,
-                stage="ready_for_feedback_search",
-                message=None,
-            )
-            state["stop_reason"] = None
-            continue
-
         return state
     
 def _update_query_enrichment(state: SearchState, **updates: object) -> SearchState:
@@ -241,6 +244,18 @@ def _update_query_enrichment(state: SearchState, **updates: object) -> SearchSta
     enrichment.update(updates)
 
     new_state["query_enrichment"] = enrichment
+    return new_state
+
+
+def _update_query_preview(state: SearchState, **updates: object) -> SearchState:
+    """Return a copied state with updated query preview data."""
+
+    new_state: SearchState = dict(state)
+
+    preview = dict(new_state.get("query_preview", {}) or {})
+    preview.update(updates)
+
+    new_state["query_preview"] = preview
     return new_state
 
 

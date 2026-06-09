@@ -57,7 +57,7 @@ python -m pip install --use-feature=truststore --upgrade pip setuptools wheel ce
 python -m pip install --use-feature=truststore -e ".[local-model]"
 
 py -m compileall src\academic_explorer_mvp
-py -m academic_explorer_mvp.main --query "audio violence detection" --min-year 2020 --max-rounds 1 --limit 5
+py -m academic_explorer_mvp.main --query "detecção de violencia em audio" --min-year 2020 --max-rounds 1 --limit 5
 ```
 
 ### Execucao validada

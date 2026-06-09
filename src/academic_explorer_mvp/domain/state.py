@@ -19,6 +19,10 @@ class SearchState(TypedDict, total=False):
     normalized_papers: list[Paper]
     deduplicated_papers: list[Paper]
     ranked_papers: list[RankedPaper]
+    validated_papers: list[dict[str, object]]
+    relevant_papers: list[dict[str, object]]
+    excluded_papers: list[dict[str, object]]
+    validation_summary: str | None
     known_paper_ids: list[str]
     last_new_paper_count: int
     last_new_paper_ids: list[str]
@@ -27,4 +31,6 @@ class SearchState(TypedDict, total=False):
     stop_reason: str | None
     model_continue_reason: str | None
     query_enrichment: dict[str, object]
+    query_preview: dict[str, object]
     paper_feedback: dict[str, object]
+    search_feedback: dict[str, object]

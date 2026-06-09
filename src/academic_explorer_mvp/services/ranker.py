@@ -18,12 +18,18 @@ class PaperRanker:
 
     good_score_threshold = 6.0
 
-    def rank(self, papers: list[Paper], context: SearchContext) -> list[RankedPaper]:
+    def rank(
+        self,
+        papers: list[Paper],
+        context: SearchContext,
+        negative_constraints: list[str] | None = None,
+    ) -> list[RankedPaper]:
         """Rank papers for the current query context."""
 
         max_citations = max((paper.citation_count or 0 for paper in papers), default=0)
         max_citation_log = math.log1p(max_citations) or 1.0
         query_terms = self._terms(context.user_query)
+        negative_constraints = negative_constraints or []
 
         ranked = [
             self._rank_one(
@@ -31,6 +37,7 @@ class PaperRanker:
                 context=context,
                 query_terms=query_terms,
                 max_citation_log=max_citation_log,
+                negative_constraints=negative_constraints,
             )
             for paper in papers
         ]
@@ -42,9 +49,11 @@ class PaperRanker:
         context: SearchContext,
         query_terms: list[str],
         max_citation_log: float,
+        negative_constraints: list[str],
     ) -> RankedPaper:
         title = (paper.title or "").lower()
         abstract = (paper.abstract or "").lower()
+        combined_text = f"{title}\n{abstract}"
 
         title_hits = sum(1 for term in query_terms if term in title)
         abstract_hits = sum(1 for term in query_terms if term in abstract)
@@ -74,6 +83,13 @@ class PaperRanker:
             reasons.append("has DOI")
 
         score = title_score + abstract_score + year_score + citation_score + metadata_score
+        negative_hits = self._negative_hits(combined_text, negative_constraints)
+        if negative_hits:
+            penalty = 4.0 * len(negative_hits)
+            score = max(0.0, score - penalty)
+            reasons.append(
+                "penalized by negative constraints: " + ", ".join(negative_hits[:4])
+            )
         if not reasons:
             reasons.append("weak metadata match")
 
@@ -88,3 +104,23 @@ class PaperRanker:
 
     def _terms(self, query: str) -> list[str]:
         return [term for term in TOKEN_RE.findall(query.lower()) if len(term) > 2]
+
+    def _negative_hits(self, text: str, constraints: list[str]) -> list[str]:
+        normalized_text = " ".join(TOKEN_RE.findall(text.lower()))
+        hits: list[str] = []
+        seen: set[str] = set()
+        for constraint in constraints:
+            label = " ".join(str(constraint).split())
+            normalized_constraint = " ".join(TOKEN_RE.findall(label.lower()))
+            if not normalized_constraint or normalized_constraint in seen:
+                continue
+
+            if " " in normalized_constraint:
+                matched = normalized_constraint in normalized_text
+            else:
+                matched = re.search(rf"\b{re.escape(normalized_constraint)}\b", normalized_text) is not None
+
+            if matched:
+                seen.add(normalized_constraint)
+                hits.append(label)
+        return hits

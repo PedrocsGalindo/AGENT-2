@@ -1,12 +1,17 @@
 """Human feedback nodes for ranked papers."""
 
-from academic_explorer_mvp.domain.paper import RankedPaper
+from dataclasses import replace
+
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph.nodes.context_nodes import (
+    _context,
     _paper_feedback,
+    _query_enrichment,
     _state_text,
     set_paper_feedback,
+    set_search_feedback,
 )
+from academic_explorer_mvp.services.query_planner import QueryPlanner
 
 
 def ask_paper_feedback(state: SearchState) -> SearchState:
@@ -18,7 +23,11 @@ def ask_paper_feedback(state: SearchState) -> SearchState:
         stage="awaiting_paper_feedback",
         pending_answer=None,
         status=None,
-        message=_build_feedback_message(state.get("ranked_papers", [])),
+        message=_build_feedback_message(
+            relevant_papers=state.get("relevant_papers", []),
+            excluded_papers=state.get("excluded_papers", []),
+            summary=_state_text(state.get("validation_summary")),
+        ),
         round=int(feedback.get("round") or 0) + 1,
     )
     new_state["stop_reason"] = "awaiting paper feedback"
@@ -57,20 +66,15 @@ def handle_paper_feedback(state: SearchState) -> SearchState:
         new_state["stop_reason"] = "awaiting paper feedback"
         return new_state
 
-    restriction = describe_paper_feedback_restriction(answer)
     new_state = set_paper_feedback(
         state,
-        stage="feedback_applied",
+        stage="needs_feedback_analysis",
         answer=answer,
         pending_answer=None,
         status="revised",
-        restriction=restriction,
-        message=(
-            "Entendi. Vou refinar a proxima busca com esta restricao:\n"
-            f'"{restriction}"'
-        ),
+        message=None,
     )
-    new_state["stop_reason"] = "paper feedback applied"
+    new_state["stop_reason"] = None
     return new_state
 
 
@@ -80,6 +84,8 @@ def route_after_paper_feedback(state: SearchState) -> str:
     status = _paper_feedback(state).get("status")
     if status == "accepted":
         return "finalize"
+    if status == "revised":
+        return "analyze_search_feedback"
     return "wait_for_user"
 
 
@@ -107,51 +113,105 @@ def interpret_paper_feedback(user_message: str) -> str:
     return "unclear"
 
 
-def describe_paper_feedback_restriction(user_message: str) -> str:
-    """Turn a user critique into a short restriction for the next query round."""
+def analyze_search_feedback(state: SearchState, planner: QueryPlanner) -> SearchState:
+    """Interpret user feedback before planning another search round."""
 
-    text = _state_text(user_message)
-    lower = text.lower()
-    audio_only_markers = (
-        "audio-only",
-        "audio only",
-        "apenas audio",
-        "apenas \u00e1udio",
-        "somente audio",
-        "somente \u00e1udio",
-        "so audio",
-        "s\u00f3 \u00e1udio",
-        "sem audio-visual",
-        "sem audiovisual",
-        "sem video",
-        "sem v\u00eddeo",
-        "sem visual",
+    context = _context(state)
+    enrichment = _query_enrichment(state)
+    feedback = _paper_feedback(state)
+    original_query = (
+        _state_text(enrichment.get("original_query"))
+        or _state_text(enrichment.get("resolved_query"))
+        or context.user_query
     )
-    if any(marker in lower for marker in audio_only_markers):
-        return (
-            "audio-only; excluir audio-visual, audiovisual, video, visual, "
-            "image, multimodal, text-based detection e hate speech"
-        )
-    return text
+    refined_query = _state_text(enrichment.get("resolved_query")) or context.user_query
+    answer = _state_text(feedback.get("answer"))
+
+    analysis = planner.analyze_search_feedback(
+        original_query=original_query,
+        refined_query=refined_query,
+        user_feedback=answer,
+        validated_papers=state.get("validated_papers", [])[:20],
+        used_queries=state.get("used_queries", []),
+    )
+
+    new_state: SearchState = dict(state)
+    new_state["context"] = replace(context, user_query=analysis.revised_topic)
+    new_state["pending_queries"] = []
+    new_state["raw_results"] = []
+    new_state["all_raw_results"] = []
+    new_state["normalized_papers"] = []
+    new_state["deduplicated_papers"] = []
+    new_state["ranked_papers"] = []
+    new_state["validated_papers"] = []
+    new_state["relevant_papers"] = []
+    new_state["excluded_papers"] = []
+    new_state["validation_summary"] = None
+    new_state["known_paper_ids"] = []
+    new_state["last_new_paper_count"] = 0
+    new_state["last_new_paper_ids"] = []
+    new_state["last_new_useful_count"] = 0
+    new_state["stop_reason"] = None
+    new_state = set_search_feedback(
+        new_state,
+        stage="analyzed",
+        revised_topic=analysis.revised_topic,
+        positive_constraints=analysis.positive_constraints,
+        negative_constraints=analysis.negative_constraints,
+        query_strategy=analysis.query_strategy,
+        reason=analysis.reason,
+    )
+    new_state = set_paper_feedback(
+        new_state,
+        stage="feedback_analyzed",
+        status="revised",
+        pending_answer=None,
+        message=None,
+    )
+    return new_state
 
 
-def _build_feedback_message(ranked_papers: list[RankedPaper]) -> str:
-    lines = ["Top 10 artigos encontrados pelo score:"]
+def _build_feedback_message(
+    relevant_papers: list[dict[str, object]],
+    excluded_papers: list[dict[str, object]],
+    summary: str,
+) -> str:
+    lines = ["Top artigos validados semanticamente:"]
 
-    if not ranked_papers:
-        lines.append("  Nenhum artigo ranqueado.")
-    for position, item in enumerate(ranked_papers[:10], start=1):
-        paper = item.paper
-        year = paper.year or "ano desconhecido"
-        source = paper.source or "fonte desconhecida"
-        url = paper.url or "sem URL"
+    if summary:
+        lines.extend(["", f"Resumo da validacao: {summary}"])
+
+    if not relevant_papers:
+        lines.append("  Nenhum artigo validado como relevante.")
+    for position, item in enumerate(relevant_papers[:10], start=1):
+        paper = item.get("paper")
+        if paper is None:
+            continue
+        year = getattr(paper, "year", None) or "ano desconhecido"
+        source = getattr(paper, "source", None) or "fonte desconhecida"
+        url = getattr(paper, "url", None) or "sem URL"
+        relevance = _relevance_label(_state_text(item.get("relevance")))
+        reason = _state_text(item.get("relevance_reason")) or "Sem justificativa informada."
+        useful_for = _state_text(item.get("useful_for"))
         lines.extend(
             [
-                f"{position}. {paper.title}",
-                f"   Score: {item.score} | Ano: {year} | Fonte: {source}",
+                f"{position}. {getattr(paper, 'title', 'titulo desconhecido')}",
+                f"   Relevancia: {relevance} | Ano: {year} | Fonte: {source}",
                 f"   URL: {url}",
+                f"   Por que entrou: {reason}",
             ]
         )
+        if useful_for:
+            lines.append(f"   Util para: {useful_for}")
+
+    if excluded_papers:
+        lines.extend(["", "Exemplos rejeitados pela validacao:"])
+        for item in excluded_papers[:5]:
+            paper = item.get("paper")
+            if paper is None:
+                continue
+            mismatch = _state_text(item.get("mismatch_reason")) or "fora da intencao da busca"
+            lines.append(f"  - {getattr(paper, 'title', 'titulo desconhecido')}: {mismatch}")
 
     lines.extend(
         [
@@ -161,3 +221,13 @@ def _build_feedback_message(ranked_papers: list[RankedPaper]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _relevance_label(relevance: str) -> str:
+    labels = {
+        "high": "alta",
+        "medium": "media",
+        "low": "baixa",
+        "reject": "rejeitada",
+    }
+    return labels.get(relevance, relevance or "desconhecida")

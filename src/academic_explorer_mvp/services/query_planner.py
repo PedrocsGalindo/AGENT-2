@@ -3,17 +3,19 @@
 from dataclasses import dataclass
 
 from academic_explorer_mvp.domain.context import SearchContext
-from academic_explorer_mvp.domain.paper import RankedPaper
+from academic_explorer_mvp.domain.paper import Paper
 from academic_explorer_mvp.llm.local_model import LocalModel, LocalModelError
 from academic_explorer_mvp.llm.prompts import (
     PromptSpec,
     build_assess_query_context_prompt,
     build_context_question_prompt,
     build_continue_decision_prompt,
+    build_feedback_analysis_prompt,
     build_initial_queries_prompt,
     build_refine_queries_prompt,
     build_rewrite_from_user_revision_prompt,
     build_rewrite_user_query_prompt,
+    build_validate_papers_prompt,
 )
 
 
@@ -56,6 +58,37 @@ class ContinueDecision:
 
     should_continue: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class SearchFeedbackAnalysis:
+    """Structured interpretation of user feedback about ranked papers."""
+
+    revised_topic: str
+    positive_constraints: list[str]
+    negative_constraints: list[str]
+    query_strategy: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class PaperValidation:
+    """Model validation for one candidate paper."""
+
+    paper_id: str
+    relevance: str
+    decision: str
+    relevance_reason: str
+    mismatch_reason: str
+    useful_for: str
+
+
+@dataclass(frozen=True)
+class PaperValidationResult:
+    """Semantic validation result for candidate papers."""
+
+    validated_papers: list[PaperValidation]
+    summary: str
 
 
 class QueryPlanner:
@@ -221,9 +254,9 @@ class QueryPlanner:
     def refine_queries(
         self,
         context: SearchContext,
-        ranked_papers: list[RankedPaper],
+        validated_papers: list[dict[str, object]],
         used_queries: list[str],
-        paper_feedback: str = "",
+        search_feedback: dict[str, object] | None = None,
     ) -> list[str]:
         """Ask the local model for next-round queries."""
 
@@ -231,9 +264,9 @@ class QueryPlanner:
             "query refinement",
             build_refine_queries_prompt(
                 context=context,
-                ranked_papers=ranked_papers[:5],
+                validated_papers=validated_papers[:10],
                 used_queries=used_queries,
-                paper_feedback=paper_feedback,
+                search_feedback=search_feedback or {},
             ),
         )
         queries = self._extract_queries(payload)
@@ -244,11 +277,118 @@ class QueryPlanner:
             )
         return queries
 
+    def analyze_search_feedback(
+        self,
+        original_query: str,
+        refined_query: str,
+        user_feedback: str,
+        validated_papers: list[dict[str, object]],
+        used_queries: list[str],
+    ) -> SearchFeedbackAnalysis:
+        """Ask the local model to structure feedback before refining queries."""
+
+        payload = self._expect_dict(
+            "search feedback analysis",
+            self._generate_json(
+                "search feedback analysis",
+                build_feedback_analysis_prompt(
+                    original_query=original_query,
+                    refined_query=refined_query,
+                    user_feedback=user_feedback,
+                    validated_papers=validated_papers[:20],
+                    used_queries=used_queries,
+                ),
+            ),
+        )
+
+        revised_topic = self._required_string(
+            payload,
+            "revised_topic",
+            "search feedback analysis",
+        )
+        return SearchFeedbackAnalysis(
+            revised_topic=revised_topic[:240],
+            positive_constraints=self._required_string_list(
+                payload,
+                "positive_constraints",
+                "search feedback analysis",
+            ),
+            negative_constraints=self._required_string_list(
+                payload,
+                "negative_constraints",
+                "search feedback analysis",
+            ),
+            query_strategy=self._required_string(
+                payload,
+                "query_strategy",
+                "search feedback analysis",
+            )[:500],
+            reason=self._required_string(
+                payload,
+                "reason",
+                "search feedback analysis",
+            )[:500],
+        )
+
+    def validate_papers(
+        self,
+        context: SearchContext,
+        papers: list[Paper],
+        search_feedback: dict[str, object] | None = None,
+    ) -> PaperValidationResult:
+        """Ask the local model to semantically validate candidate papers."""
+
+        payload = self._expect_dict(
+            "paper validation",
+            self._generate_json(
+                "paper validation",
+                build_validate_papers_prompt(
+                    context=context,
+                    papers=papers,
+                    search_feedback=search_feedback or {},
+                ),
+            ),
+        )
+        raw_items = payload.get("validated_papers")
+        if not isinstance(raw_items, list):
+            raise RuntimeError(
+                "Local model returned JSON, but it did not contain the required "
+                "`validated_papers` list for paper validation."
+            )
+
+        validations: list[PaperValidation] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            paper_id = self._safe_string(raw_item, "paper_id")
+            if not paper_id:
+                continue
+            validations.append(
+                PaperValidation(
+                    paper_id=paper_id,
+                    relevance=self._normalize_relevance(
+                        self._safe_string(raw_item, "relevance")
+                    ),
+                    decision=self._normalize_decision(
+                        self._safe_string(raw_item, "decision"),
+                        self._safe_string(raw_item, "relevance"),
+                    ),
+                    relevance_reason=self._safe_string(raw_item, "relevance_reason")[:400],
+                    mismatch_reason=self._safe_string(raw_item, "mismatch_reason")[:400],
+                    useful_for=self._safe_string(raw_item, "useful_for")[:400],
+                )
+            )
+
+        return PaperValidationResult(
+            validated_papers=validations,
+            summary=self._optional_string(payload, "summary") or "model did not provide a summary",
+        )
+
     def should_continue(
         self,
         context: SearchContext,
         round_number: int,
-        ranked_papers: list[RankedPaper],
+        validated_papers: list[dict[str, object]],
         last_new_paper_count: int,
         last_new_useful_count: int,
     ) -> ContinueDecision:
@@ -259,7 +399,7 @@ class QueryPlanner:
             build_continue_decision_prompt(
                 context=context,
                 round_number=round_number,
-                ranked_papers=ranked_papers[:5],
+                validated_papers=validated_papers[:10],
                 last_new_paper_count=last_new_paper_count,
                 last_new_useful_count=last_new_useful_count,
             ),
@@ -375,6 +515,42 @@ class QueryPlanner:
                 "Local model returned JSON, but it did not contain the required "
                 f"`{key}` boolean for {step_name}."
             ) from exc
+
+    def _required_string_list(
+        self,
+        payload: dict[str, object],
+        key: str,
+        step_name: str,
+    ) -> list[str]:
+        value = payload.get(key)
+        if not isinstance(value, list):
+            raise RuntimeError(
+                "Local model returned JSON, but it did not contain the required "
+                f"`{key}` list for {step_name}."
+            )
+
+        strings: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            text = " ".join(str(item).split())
+            key_text = text.lower()
+            if not text or key_text in seen:
+                continue
+            seen.add(key_text)
+            strings.append(text[:120])
+        return strings
+
+    def _normalize_relevance(self, value: str) -> str:
+        text = value.strip().lower()
+        if text in {"high", "medium", "low", "reject"}:
+            return text
+        return "reject"
+
+    def _normalize_decision(self, decision: str, relevance: str) -> str:
+        text = decision.strip().lower()
+        if text in {"include", "exclude"}:
+            return text
+        return "exclude" if self._normalize_relevance(relevance) == "reject" else "include"
 
     def _safe_string(
         self,

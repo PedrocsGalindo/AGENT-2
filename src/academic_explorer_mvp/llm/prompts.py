@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from academic_explorer_mvp.domain.context import SearchContext
-from academic_explorer_mvp.domain.paper import RankedPaper
+from academic_explorer_mvp.domain.paper import Paper
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,9 @@ class PromptSpec:
 
 
 INITIAL_QUERIES_PROMPT_VERSION = "1.0.4"
-REFINE_QUERIES_PROMPT_VERSION = "1.0.1"
+REFINE_QUERIES_PROMPT_VERSION = "1.0.2"
+FEEDBACK_ANALYSIS_PROMPT_VERSION = "1.0.0"
+VALIDATE_PAPERS_PROMPT_VERSION = "1.0.0"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.0"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
 ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.0.0"
@@ -29,7 +31,7 @@ REWRITE_FROM_USER_REVISION_PROMPT_VERSION = "1.0.0"
 
 
 def build_assess_query_context_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for deciding whether the query has enough search context."""
+    """contexto suficiente ou nao"""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
@@ -38,59 +40,102 @@ You are preparing an academic paper search.
 Task:
 Decide whether the user's query has enough context to start building useful academic search queries.
 
-Important:
-Do not generate a clarification question here.
-Only assess whether the query is clear enough.
+Core decision criterion:
+A query has enough context only when it contains:
 
-Core rule:
-A topic being searchable is not enough.
+1. a recognizable academic topic; and
+2. enough search intent to avoid guessing what the user wants.
+
+Searchable is not the same as enough context.
+If a general search can be created, but it would require assuming the user's desired focus, then context is missing.
 
 Use has_enough_context=true when:
-- the user explicitly asks for a review, survey, overview, introduction, state of the art, or broad learning;
-- or the query has a clear technical focus, such as a method, dataset, data source, application, modality, restriction, comparison, metric, or specific research problem.
+
+* the user explicitly asks for a review, survey, overview, introduction, state of the art, or broad learning;
+* or the query contains a clear topic plus a specific research focus, such as method, dataset, data source, metric, comparison, restriction, application, domain, modality, or specific problem;
+* and the next step can generate academic search queries without guessing the user's intended direction.
 
 Use has_enough_context=false when:
-- the query is broad and the user did not say whether they want an overview or a specific focus;
-- the query could lead to very different academic searches depending on missing context;
-- the topic has multiple common meanings and the intended meaning is not clear.
 
-Broad/review intent markers include:
-review, survey, overview, literature review, systematic review, introduction,
-state of the art, general overview, revisão, revisão geral, visão geral,
-panorama, estado da arte, de forma geral, no geral, quero aprender,
-quero entender, quero conhecer a área.
+* the query is broad and the user did not say whether they want a general overview or a specific focus;
+* the query could naturally lead to several different academic searches;
+* the query is searchable, but generating queries would require assuming the user's desired method, domain, data source, modality, application, metric, or review intent;
+* the topic has multiple common academic meanings and the intended meaning is unclear.
 
-Do not include any fields besides has_enough_context and reason.
+Important:
+Do not mark a query as sufficient only because general search queries can be generated.
+Ask for clarification when the user's desired search direction is unknown.
 
 Examples:
 
-User query: violence detection
+User query: stock prediction
 Output:
-{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants a general review or a specific focus such as audio, video, text, or images"}}
+{{"has_enough_context":false,"reason":"the query is searchable, but it does not specify whether the user wants a review or a specific focus such as methods, data sources, assets, markets, time horizon, or metrics"}}
 
-User query: violence detection review
+User query: stock prediction review
 Output:
-{{"has_enough_context":true,"reason":"the user explicitly indicated review intent"}}
-
-User query: audio violence detection
-Output:
-{{"has_enough_context":false,"reason":"the query has a modality, but does not say whether the user wants an overview or a specific focus such as datasets, models, events, or deployment"}}
-
-User query: audio violence detection review
-Output:
-{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for a clear modality"}}
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for the topic"}}
 
 User query: stock price prediction using LSTM and news sentiment
 Output:
-{{"has_enough_context":true,"reason":"the query includes task, method, and data source"}}
+{{"has_enough_context":true,"reason":"the query specifies the task, method, and data source"}}
+
+User query: violence detection
+Output:
+{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants a general overview or a specific focus such as modality, datasets, models, or deployment"}}
+
+User query: violence detection review
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for the topic"}}
+
+User query: audio violence detection
+Output:
+{{"has_enough_context":false,"reason":"the query specifies the modality, but not whether the user wants a general overview or a specific focus such as datasets, models, features, metrics, real-time detection, or comparison"}}
+
+User query: audio violence detection review
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for audio-based violence detection"}}
+
+User query: audio violence detection using deep learning
+Output:
+{{"has_enough_context":true,"reason":"the query specifies the task, modality, and method family"}}
+
+User query: prompt engineering
+Output:
+{{"has_enough_context":false,"reason":"the query is broad and does not specify whether the user wants an overview or a specific focus such as LLMs, image generation, code generation, evaluation, or optimization"}}
+
+User query: prompt engineering overview
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated overview intent for the topic"}}
+
+User query: prompt engineering for image generation
+Output:
+{{"has_enough_context":false,"reason":"the query specifies the application domain, but not whether the user wants an overview or a specific focus such as style control, prompt evaluation, visual quality, or optimization"}}
+
+User query: prompt engineering for image generation evaluation
+Output:
+{{"has_enough_context":true,"reason":"the query specifies the topic, application domain, and evaluation focus"}}
 
 User query: noisy data in medical image classification
 Output:
-{{"has_enough_context":false,"reason":"the query is relevant, but noise may refer to label noise, image noise, acquisition noise, or robustness"}}
+{{"has_enough_context":false,"reason":"the query is relevant, but noisy data may refer to label noise, image noise, acquisition noise, outliers, or robustness"}}
+
+User query: label noise in medical image classification
+Output:
+{{"has_enough_context":true,"reason":"the query specifies the type of noise and the application domain"}}
 
 User query: shortcut bias
 Output:
-{{"has_enough_context":false,"reason":"the topic is broad and does not indicate overview intent or application domain"}}
+{{"has_enough_context":false,"reason":"the query is a recognizable research problem, but does not specify whether the user wants an overview or a focus such as computer vision, NLP, medical imaging, dataset bias, or robustness"}}
+
+User query: shortcut bias review
+Output:
+{{"has_enough_context":true,"reason":"the user explicitly indicated review intent for the topic"}}
+
+User query: shortcut bias in computer vision
+Output:
+{{"has_enough_context":true,"reason":"the query specifies the research problem and application domain"}}
+
 
 User query:
 {context.user_query}
@@ -116,124 +161,214 @@ Required JSON shape when context is enough:
 def build_context_question_prompt(
     user_query: str,
     reason: str,
-) -> PromptSpec:
+    ) -> PromptSpec:
     """Prompt for generating one clarification question with domain-specific options."""
 
     text = f"""Return only one JSON object. No markdown. No explanation.
 
-You are preparing an academic paper search.
+    You are preparing an academic paper search.
 
-Task:
-Generate exactly one useful clarification question for the user's current query.
+    Task:
+    Generate exactly one useful clarification question for the user's current query.
 
-Important:
-Do not reassess whether the query has enough context.
-The assessment was already done.
-Your only task is to ask one question that helps complete the missing context.
+    Important:
+    Do not reassess whether the query has enough context.
+    The assessment was already done.
+    Your only task is to ask one question that helps complete the missing context.
 
-Core rule:
-The question options must be specific to the user's topic.
-Do not reuse options from examples unless they make sense for the current topic.
+    Current user query:
+    {user_query}
 
-Current user query:
-{user_query}
+    Reason from previous assessment:
+    {reason}
 
-Reason from previous assessment:
-{reason}
+    Core goal:
+    Ask one question that helps identify the user's intended academic search direction.
 
-How to build the question:
-1. Identify the real topic of the query.
-2. Identify the academic/research area of that topic.
-3. Generate options that are natural for that area.
-4. Prefer options that would become useful academic search terms.
-5. Ask one question only.
+    The initial query can be about any research topic.
+    It may come from computer science, medicine, finance, education, biology, engineering, social sciences, design, or another academic area.
 
-Option guidance by topic type:
-- For stock prediction, finance, market forecasting, or asset prediction:
-  use options such as method, asset type, time horizon, data source, market, evaluation metrics, or review/overview.
-  Do not ask about audio, video, image, or text unless the query explicitly mentions multimodal data.
+    Core rule:
+    Do not copy examples literally.
+    Examples are only references for the reasoning pattern.
+    The user's real query may be very different from the examples.
 
-- For violence detection:
-  use options such as audio, video, text, images, datasets, models, real-time detection, surveillance, or mobile deployment.
+    Your question must be built from:
 
-- For medical image classification:
-  use options such as image type, disease, organ, dataset, model, label noise, robustness, or evaluation metrics.
+    1. the actual user query;
+    2. the missing context described in the reason;
+    3. the academic area suggested by the query;
+    4. natural search dimensions for that area.
 
-- For noisy data:
-  use options such as label noise, input noise, acquisition noise, outliers, robust training, or uncertainty.
+    Reason handling rule:
+    The reason is a hint, not a script.
+    Do not copy the wording from the reason if it sounds unnatural.
+    If the reason is too generic, infer the most useful missing dimension from the user query.
+    If the reason suggests options unrelated to the query, ignore those options.
 
-- For shortcut bias:
-  use options such as general overview, computer vision, NLP, medical imaging, dataset bias, spurious correlations, or robustness.
+    How to build the question:
 
-- For recommendation systems:
-  use options such as collaborative filtering, content-based filtering, deep learning, cold start, evaluation metrics, or fairness.
+    1. Identify the real topic of the query.
+    2. Identify the academic/research area of that topic.
+    3. Identify what kind of information is missing.
+    4. Generate options that are natural for that specific area.
+    5. Prefer options that could become useful academic search terms.
+    6. Ask one question only.
 
-- For fake news detection:
-  use options such as text-based detection, social network propagation, multimodal detection, datasets, explainability, or language.
+    Useful missing-context dimensions:
+    Depending on the topic, the missing context may be:
 
-Fallback rule:
-If the topic does not match any category above, create options from the nouns and technical terms in the user's query.
-Prefer:
-- method
-- application
-- dataset
-- domain
-- metric
-- comparison
-- time period
-- review/overview
+    * review or overview intent;
+    * method;
+    * model family;
+    * application;
+    * domain;
+    * modality;
+    * dataset;
+    * data source;
+    * metric;
+    * comparison;
+    * population;
+    * disease;
+    * task;
+    * system type;
+    * time horizon;
+    * deployment context;
+    * evaluation focus;
+    * theoretical vs practical focus.
 
-Language rule:
-Use the same language as the user when possible.
-If the query is in Portuguese, ask in Portuguese.
-If the query is in English, ask in English.
+    Do not force all dimensions into the question.
+    Choose only the dimensions that make sense for the current topic.
 
-Question style:
-The question should be direct, useful, and specific.
+    Generalization rule:
+    If the topic does not match any known example or category, do not guess randomly.
+    Instead:
 
-Good patterns:
-- "Você quer uma visão geral sobre [topic] ou quer focar em algo mais específico, como [option 1], [option 2], [option 3] ou [option 4]?"
-- "Para [topic], você quer priorizar [option 1], [option 2], [option 3] ou uma revisão geral da área?"
+    * extract the main nouns and technical terms from the query;
+    * identify the academic field they belong to;
+    * ask whether the user wants a general overview or a focus based on natural dimensions of that field.
 
-Bad questions. Never ask:
-- What specific aspect do you need?
-- Can you provide more context?
-- What do you want to know?
-- Please clarify your query.
+    Question style:
+    The question should be direct, useful, and specific.
 
-Also never ask options unrelated to the topic.
-For example:
-- Do not ask about audio/video/image/text for stock prediction.
-- Do not ask about stock assets for medical image classification.
-- Do not ask about organs or exams for fake news detection.
+    Good question patterns:
 
-Examples:
+    * "Você quer uma visão geral sobre [topic] ou quer focar em algo mais específico, como [option 1], [option 2], [option 3] ou [option 4]?"
+    * "Para [topic], você quer priorizar [option 1], [option 2], [option 3] ou uma revisão geral da área?"
+    * "Em [topic], o foco deve ser [option 1], [option 2], [option 3], [option 4] ou uma visão geral?"
 
-User query: stock prediction
-Reason from previous assessment: the query is broad and does not specify whether the user wants a general review or a specific focus
-Output:
-{{"question":"Você quer uma visão geral sobre previsão de ações ou quer focar em algo mais específico, como métodos de previsão, tipo de ativo, horizonte temporal, fontes de dados ou métricas de avaliação?","reason":"the question offers finance-specific directions that would change the academic search terms"}}
+    Bad questions. Never ask:
 
-User query: stock prediction
-Reason from previous assessment: the query does not indicate which data source should guide the search
-Output:
-{{"question":"Na previsão de ações, você quer considerar quais fontes de dados: séries históricas de preços, indicadores técnicos, notícias, sentimento de mercado, fundamentos financeiros ou dados macroeconômicos?","reason":"the question asks about data sources that are relevant to stock prediction"}}
+    * What specific aspect do you need?
+    * Can you provide more context?
+    * What do you want to know?
+    * Please clarify your query.
+    * Could you be more specific?
 
-User query: violence detection
-Reason from previous assessment: the query is broad and does not specify whether the focus is a general review or a specific modality
-Output:
-{{"question":"Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?","reason":"the modality strongly changes the search terms for violence detection"}}
+    Avoid unrelated options:
 
-User query: noisy data in medical image classification
-Reason from previous assessment: noise may refer to labels, images, acquisition, or robustness
-Output:
-{{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?","reason":"different meanings of noise lead to different academic search terms"}}
+    * Do not ask about audio, video, image, or text for stock prediction unless the query explicitly mentions multimodal data.
+    * Do not ask about stock assets for medical image classification.
+    * Do not ask about organs or exams for fake news detection.
+    * Do not ask about modality if the modality is already present in the query.
+    * Do not add methods, datasets, metrics, or domains that are not natural for the topic.
 
-Now generate the final answer for the current user query only.
+    Language rule:
+    Use the same language as the user when possible.
+    If the query is in Portuguese, ask in Portuguese.
+    If the query is in English, ask in English.
+    If the system around the user is in Portuguese and the user answer is expected in Portuguese, Portuguese is acceptable.
 
-Required JSON shape:
-{{"question":"one clarification question with topic-specific options","reason":"short reason"}}
-"""
+    Topic guidance:
+    These are not fixed templates.
+    Use them only when they fit the current query.
+
+    * For stock prediction, finance, market forecasting, or asset prediction:
+    natural options include review/overview, forecasting methods, asset type, market, time horizon, data source, technical indicators, news sentiment, fundamentals, macroeconomic data, or evaluation metrics.
+
+    * For violence detection:
+    natural options include review/overview, modality, audio, video, text, images, datasets, models, feature extraction, real-time detection, surveillance, mobile deployment, benchmark comparison, or evaluation metrics.
+
+    * For medical image classification:
+    natural options include review/overview, image type, disease, organ, dataset, model, label noise, robustness, segmentation/classification, clinical validation, or evaluation metrics.
+
+    * For noisy data:
+    natural options include review/overview, label noise, input noise, acquisition noise, outliers, robust training, uncertainty, data cleaning, or evaluation under noise.
+
+    * For shortcut bias:
+    natural options include review/overview, computer vision, NLP, medical imaging, dataset bias, spurious correlations, robustness, evaluation, or mitigation methods.
+
+    * For recommendation systems:
+    natural options include review/overview, collaborative filtering, content-based filtering, deep learning, cold start, evaluation metrics, fairness, explainability, or domain-specific recommendation.
+
+    * For fake news detection:
+    natural options include review/overview, text-based detection, social network propagation, multimodal detection, datasets, explainability, language, misinformation, or fact-checking.
+
+    Examples:
+    The examples below are illustrative.
+    Do not copy their options unless they fit the current user query.
+    Use them to understand how to connect the missing context with topic-specific academic search directions.
+
+    User query: stock prediction
+    Reason from previous assessment: the query is broad and does not specify whether the user wants a general review or a specific focus
+    Output:
+    {{"question":"Você quer uma visão geral sobre previsão de ações ou quer focar em algo mais específico, como métodos de previsão, tipo de ativo, horizonte temporal, fontes de dados ou métricas de avaliação?","reason":"the question offers finance-specific directions that would change the academic search terms"}}
+
+    User query: stock prediction
+    Reason from previous assessment: the query does not indicate which data source should guide the search
+    Output:
+    {{"question":"Na previsão de ações, você quer considerar quais fontes de dados: séries históricas de preços, indicadores técnicos, notícias, sentimento de mercado, fundamentos financeiros ou dados macroeconômicos?","reason":"the question asks about data sources that are relevant to stock prediction"}}
+
+    User query: violence detection
+    Reason from previous assessment: the query is broad and does not specify whether the focus is a general review or a specific modality
+    Output:
+    {{"question":"Você quer uma visão geral sobre detecção de violência ou quer focar em uma modalidade específica, como áudio, vídeo, texto ou imagens?","reason":"the modality strongly changes the search terms for violence detection"}}
+
+    User query: audio violence detection
+    Reason from previous assessment: the query has a modality, but does not specify whether the user wants a general review or a specific research focus
+    Output:
+    {{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em algo mais específico, como datasets, modelos, extração de características, métricas de avaliação, detecção em tempo real ou comparação entre abordagens?","reason":"audio already defines the modality, so the question focuses on the missing research direction"}}
+
+    User query: noisy data in medical image classification
+    Reason from previous assessment: noise may refer to labels, images, acquisition, or robustness
+    Output:
+    {{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, robustez do modelo ou uma revisão geral do tema?","reason":"different meanings of noise lead to different academic search terms"}}
+
+    User query: prompt engineering
+    Reason from previous assessment: the query is broad and does not specify application domain or research focus
+    Output:
+    {{"question":"Você quer uma visão geral sobre engenharia de prompt ou quer focar em algo mais específico, como modelos de linguagem, geração de imagens, geração de código, avaliação de prompts ou técnicas de otimização?","reason":"prompt engineering can involve different applications and research focuses"}}
+
+    User query: prompt engineering for image generation
+    Reason from previous assessment: the query specifies the application domain, but not the research focus
+    Output:
+    {{"question":"Em engenharia de prompt para geração de imagens, você quer uma visão geral da área ou quer focar em controle de estilo, qualidade visual, avaliação de prompts, modelos texto-imagem ou técnicas de otimização?","reason":"the topic already specifies image generation, so the question focuses on the missing research direction"}}
+
+    User query: LLM hallucination
+    Reason from previous assessment: the query is broad and does not specify whether the user wants causes, evaluation, or mitigation
+    Output:
+    {{"question":"Você quer uma visão geral sobre alucinação em LLMs ou quer focar em algo mais específico, como causas, métricas de avaliação, mitigação, RAG, verificação factual ou benchmarks?","reason":"LLM hallucination can be studied through causes, evaluation, mitigation, and system design"}}
+
+    User query: machine learning for agriculture
+    Reason from previous assessment: the query is broad and does not specify application or data type
+    Output:
+    {{"question":"Em machine learning para agricultura, você quer uma visão geral da área ou quer focar em aplicações específicas, como previsão de produtividade, detecção de doenças em plantas, irrigação inteligente, imagens de satélite ou sensores IoT?","reason":"machine learning in agriculture can involve different applications and data sources"}}
+
+    User query: sentiment analysis
+    Reason from previous assessment: the query is broad and does not specify domain, language, method, or review intent
+    Output:
+    {{"question":"Você quer uma visão geral sobre análise de sentimentos ou quer focar em algo mais específico, como redes sociais, avaliações de produtos, notícias, português, modelos baseados em transformers ou métricas de avaliação?","reason":"sentiment analysis can vary by domain, language, method, and evaluation focus"}}
+
+    User query: federated learning in healthcare
+    Reason from previous assessment: the query specifies method and domain, but not the specific research focus
+    Output:
+    {{"question":"Em federated learning na saúde, você quer uma visão geral da área ou quer focar em privacidade, imagens médicas, prontuários eletrônicos, heterogeneidade dos dados, segurança ou aplicações clínicas?","reason":"the method and domain are clear, but the research focus is still open"}}
+
+    Now generate the final answer for the current user query only.
+
+    Required JSON shape:
+    {{"question":"one clarification question with topic-specific options","reason":"short reason"}}
+    """
 
     return PromptSpec(
         name="context_question",
@@ -244,6 +379,7 @@ Required JSON shape:
             "purpose": "query_context_question",
         },
     )
+
 
 def build_rewrite_user_query_prompt(
     initial_query: str,
@@ -556,35 +692,119 @@ Exact shape:
     )
 
 
+def build_validate_papers_prompt(
+    context: SearchContext,
+    papers: list[Paper],
+    search_feedback: dict[str, object] | None = None,
+) -> PromptSpec:
+    """Prompt for semantic validation of candidate papers."""
+
+    feedback = search_feedback or {}
+    revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
+    positive_constraints = _feedback_list(feedback, "positive_constraints")
+    negative_constraints = _feedback_list(feedback, "negative_constraints")
+    query_strategy = _feedback_text(feedback, "query_strategy") or "none"
+    paper_block = _format_candidate_papers(papers)
+
+    text = f"""Return only one JSON object. No markdown. No explanation.
+
+You are validating academic search results semantically.
+
+User search intent:
+{context.user_query}
+
+Current revised topic:
+{revised_topic}
+
+Positive constraints:
+{_format_items(positive_constraints)}
+
+Negative constraints:
+{_format_items(negative_constraints)}
+
+Query strategy:
+{query_strategy}
+
+Candidate papers:
+{paper_block}
+
+Task:
+For each candidate paper, decide whether it is relevant to the user's search intent.
+
+Rules:
+- Evaluate semantic relation to the user's intent, not superficial word overlap.
+- Do not mark a paper relevant only because it contains a similar word.
+- If the user asked for audio-only, reject video, visual, audio-visual, audiovisual, multimodal, image, text, and hate speech papers unless the title/abstract clearly says audio is the actual violence-detection modality.
+- If the user asked for an overview, prioritize surveys, reviews, and papers useful for mapping methods, datasets, or approaches.
+- Reject papers from another domain, such as deepfake, ChatGPT, misinformation, hate speech, generic LLMs, data feminism, or text-only detection, when they do not answer the search intent.
+- Keep the explanation short and based only on title, abstract, year, source, and URL.
+- Do not invent information absent from the title or abstract.
+- If the abstract is missing, judge cautiously using only title and metadata.
+
+Relevance labels:
+- high: directly related to the user's intent.
+- medium: partially related but still useful.
+- low: tangential and only worth including if there are few results.
+- reject: outside the topic.
+
+Decision labels:
+- include: use for high, medium, and only clearly useful low papers.
+- exclude: use for reject and papers that violate negative constraints.
+
+Expected behavior for audio-only violence detection:
+- Include papers about audio-based, acoustic, sound-based, or audio-signal violence detection.
+- Exclude papers about deepfake, ChatGPT, misinformation, Data Feminism, video-based violence detection, vision-based surveillance, and multimodal/audio-visual detection.
+
+Required JSON shape:
+{{"validated_papers":[{{"paper_id":"paper id","relevance":"high","decision":"include","relevance_reason":"short reason","mismatch_reason":"","useful_for":"how this helps the research"}}],"summary":"short summary of relevant and rejected paper types"}}
+"""
+
+    return PromptSpec(
+        name="validate_papers",
+        version=VALIDATE_PAPERS_PROMPT_VERSION,
+        text=text,
+        metadata={
+            "output_format": "json",
+            "purpose": "paper_semantic_validation",
+        },
+    )
+
+
 def build_refine_queries_prompt(
     context: SearchContext,
-    ranked_papers: list[RankedPaper],
+    validated_papers: list[dict[str, object]],
     used_queries: list[str],
-    paper_feedback: str = "",
+    search_feedback: dict[str, object] | None = None,
 ) -> PromptSpec:
     """Prompt for refining search queries."""
 
-    titles = "; ".join(item.paper.title[:80] for item in ranked_papers) or "none"
+    evidence = _format_validated_papers(validated_papers[:10])
     used = "; ".join(used_queries[-6:]) or "none"
-    feedback = paper_feedback or "none"
+    feedback = search_feedback or {}
+    revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
+    positive_constraints = _feedback_list(feedback, "positive_constraints")
+    negative_constraints = _feedback_list(feedback, "negative_constraints")
+    query_strategy = _feedback_text(feedback, "query_strategy") or "none"
 
     text = f"""Return only one JSON object. No markdown. No explanation.
                 The "queries" array must contain 1 to 3 non-empty strings.
                 Create new academic search queries. Do not repeat used queries.
-                Use this topic in the query text: {context.user_query}
+                Use this revised topic in the query text: {revised_topic}
                 Minimum year: {context.min_year}
                 Used queries: {used}
-                Best paper titles: {titles}
-                User feedback/restriction for the next search: {feedback}
-                If user feedback/restriction is not "none", every query must obey it.
-                Treat exclusions in the feedback as hard exclusions.
+                Validated-paper evidence: {evidence}
+                Positive constraints: {_format_items(positive_constraints)}
+                Negative constraints: {_format_items(negative_constraints)}
+                Query strategy: {query_strategy}
+                Every query must follow the revised topic, positive constraints, negative constraints, and query strategy.
+                Treat negative constraints as hard exclusions.
                 When the topic is audio violence detection and the user did not explicitly ask for multimodal search, treat it as audio-only.
                 For audio-only violence detection, avoid these terms: audio-visual, audiovisual, video, visual, image, multimodal, text, hate speech.
                 Good audio-only query examples:
                 - audio-only violence detection review
                 - acoustic event detection violence aggression audio-only
                 - sound-based violence detection surveillance review
-                Exact shape: {{"queries":["{context.user_query} method"],"reason":"new angle"}}
+                Exact shape: {{"queries":["{revised_topic} method"],"reason":"new angle"}}
             """
 
     return PromptSpec(
@@ -598,24 +818,86 @@ def build_refine_queries_prompt(
     )
 
 
+def build_feedback_analysis_prompt(
+    original_query: str,
+    refined_query: str,
+    user_feedback: str,
+    validated_papers: list[dict[str, object]],
+    used_queries: list[str],
+) -> PromptSpec:
+    """Prompt for interpreting human feedback on ranked papers."""
+
+    papers = _format_validated_papers(validated_papers[:20])
+    used = "; ".join(used_queries[-10:]) or "none"
+
+    text = f"""Return only one JSON object. No markdown. No explanation.
+
+You are improving an academic paper search after the user reviewed the ranked papers.
+
+Task:
+Interpret the user's critique into structured search guidance before generating new queries.
+
+Inputs:
+Original user query: {original_query}
+Current refined query: {refined_query}
+User feedback: {user_feedback}
+Used queries: {used}
+Validated-paper evidence:
+{papers}
+
+Rules:
+- Do not generate search queries here.
+- Do not copy the raw feedback into query_strategy.
+- Convert the feedback into a cleaner academic revised_topic.
+- Put desired concepts, modalities, and terms in positive_constraints.
+- Put excluded concepts, modalities, and terms in negative_constraints.
+- Make query_strategy an actionable sentence for the next query-planning step.
+- Keep each constraint short and searchable.
+- Preserve the original research intent unless the user explicitly changes it.
+- If the user says the search should be audio only, include audio-only/audio-based/acoustic/sound-based terms as positive constraints.
+- Use included and excluded papers as evidence for what worked and what failed.
+- If the user excludes multimodal or audio-visual directions, include related negative constraints such as multimodal, audio-visual, audiovisual, video, visual, image, text, and hate speech when relevant.
+
+Expected case:
+Original user query: audio violence detection
+Current refined query: audio violence detection
+User feedback: na verdade era para ser sobre audio apenas, sem ser multimodal e sem ser audio-visual
+Output:
+{{"revised_topic":"audio-only violence detection review","positive_constraints":["audio-only","audio-based","acoustic","sound-based violence detection"],"negative_constraints":["multimodal","audio-visual","audiovisual","video","visual","image","text","hate speech"],"query_strategy":"Search only for papers where violence detection is based on audio signals. Avoid multimedia, visual surveillance, video-based violence detection, and text-based hate speech detection.","reason":"The user clarified that the intended modality is audio only, while the previous ranked papers included multimodal, video, vision-based, and text-related papers."}}
+
+Required JSON shape:
+{{"revised_topic":"clean revised academic topic","positive_constraints":["constraint"],"negative_constraints":["constraint"],"query_strategy":"actionable query strategy","reason":"short reason"}}
+"""
+
+    return PromptSpec(
+        name="feedback_analysis",
+        version=FEEDBACK_ANALYSIS_PROMPT_VERSION,
+        text=text,
+        metadata={
+            "output_format": "json",
+            "purpose": "search_feedback_analysis",
+        },
+    )
+
+
 def build_continue_decision_prompt(
     context: SearchContext,
     round_number: int,
-    ranked_papers: list[RankedPaper],
+    validated_papers: list[dict[str, object]],
     last_new_paper_count: int,
     last_new_useful_count: int,
 ) -> PromptSpec:
     """Prompt for deciding whether another search round is useful."""
 
-    titles = "; ".join(item.paper.title[:80] for item in ranked_papers) or "none"
+    evidence = _format_validated_papers(validated_papers[:10])
 
     text = f"""Return only one JSON object. No markdown. No explanation.
                 Decide if another academic search round is useful.
                 Topic: {context.user_query}
                 Round: {round_number} of {context.max_rounds}
                 New papers: {last_new_paper_count}
-                New useful papers: {last_new_useful_count}
-                Best paper titles: {titles}
+                New useful validated papers: {last_new_useful_count}
+                Validated-paper evidence: {evidence}
                 The "continue" value must be true or false.
                 Exact shape: {{"continue":true,"reason":"short reason"}}
             """
@@ -629,3 +911,62 @@ def build_continue_decision_prompt(
             "purpose": "continue_decision",
         },
     )
+
+
+def _feedback_text(feedback: dict[str, object], key: str) -> str:
+    value = feedback.get(key)
+    if value is None:
+        return ""
+    return " ".join(str(value).split())
+
+
+def _feedback_list(feedback: dict[str, object], key: str) -> list[str]:
+    value = feedback.get(key)
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        text = " ".join(str(item).split())
+        if text:
+            items.append(text)
+    return items
+
+
+def _format_items(items: list[str]) -> str:
+    return "; ".join(items) if items else "none"
+
+
+def _format_candidate_papers(papers: list[Paper]) -> str:
+    if not papers:
+        return "none"
+
+    lines: list[str] = []
+    for position, paper in enumerate(papers, start=1):
+        abstract = " ".join((paper.abstract or "").split())[:500] or "no abstract"
+        lines.append(
+            f"{position}. id={paper.id}; title={paper.title}; "
+            f"year={paper.year or 'unknown'}; source={paper.source}; "
+            f"url={paper.url or 'none'}; abstract={abstract}"
+        )
+    return "\n".join(lines)
+
+
+def _format_validated_papers(validated_papers: list[dict[str, object]]) -> str:
+    if not validated_papers:
+        return "none"
+
+    lines: list[str] = []
+    for position, item in enumerate(validated_papers, start=1):
+        paper = item.get("paper")
+        title = getattr(paper, "title", "unknown")
+        paper_id = getattr(paper, "id", item.get("paper_id", "unknown"))
+        relevance = _feedback_text(item, "relevance") or "unknown"
+        decision = _feedback_text(item, "decision") or "unknown"
+        relevance_reason = _feedback_text(item, "relevance_reason")
+        mismatch_reason = _feedback_text(item, "mismatch_reason")
+        lines.append(
+            f"{position}. id={paper_id}; title={title}; relevance={relevance}; "
+            f"decision={decision}; why_in={relevance_reason or 'none'}; "
+            f"why_out={mismatch_reason or 'none'}"
+        )
+    return "\n".join(lines)

@@ -15,6 +15,7 @@ class AppConfig:
     provider_timeout_seconds: int
     agent_model_id: str
     agent_max_new_tokens: int
+    agent_max_length: int
     agent_temperature: float
     agent_torch_dtype: str
     agent_device_map: str
@@ -32,6 +33,7 @@ class AppConfig:
                 "Qwen/Qwen2.5-1.5B-Instruct",
             ),
             agent_max_new_tokens=_int_env("ACADEMIC_EXPLORER_AGENT_MAX_NEW_TOKENS", 512),
+            agent_max_length = _int_env("ACADEMIC_EXPLORER_AGENT_MAX_LENGTH", 20),
             agent_temperature=_float_env("ACADEMIC_EXPLORER_AGENT_TEMPERATURE", 0.0),
             agent_torch_dtype=os.getenv("ACADEMIC_EXPLORER_AGENT_TORCH_DTYPE", "auto"),
             agent_device_map=os.getenv("ACADEMIC_EXPLORER_AGENT_DEVICE_MAP", "auto"),

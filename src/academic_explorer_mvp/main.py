@@ -46,7 +46,7 @@ def main() -> None:
 def print_summary(state: SearchState) -> None:
     """Print the final search summary."""
 
-    ranked = state.get("ranked_papers", [])
+    relevant = state.get("relevant_papers", [])
     print("\nAcademic Explorer MVP")
     print("=====================")
     print(f"Rodada atual: {state.get('round_number', 0)}")
@@ -64,8 +64,12 @@ def print_summary(state: SearchState) -> None:
     print(f"  Resultados brutos: {len(state.get('all_raw_results', []))}")
     print(f"  Artigos normalizados: {len(state.get('normalized_papers', []))}")
     print(f"  Apos deduplicacao: {len(state.get('deduplicated_papers', []))}")
+    print(f"  Artigos validados como relevantes: {len(state.get('relevant_papers', []))}")
+    print(f"  Artigos excluidos pela validacao: {len(state.get('excluded_papers', []))}")
     print(f"  Novos artigos na ultima rodada: {state.get('last_new_paper_count', 0)}")
     print(f"  Novos artigos uteis na ultima rodada: {state.get('last_new_useful_count', 0)}")
+    if state.get("validation_summary"):
+        print(f"  Resumo da validacao: {state['validation_summary']}")
 
     errors = state.get("provider_errors", [])
     if errors:
@@ -73,19 +77,34 @@ def print_summary(state: SearchState) -> None:
         for error in errors:
             print(f"  - {error}")
 
-    print("\nTop artigos:")
-    if not ranked:
-        print("  Nenhum artigo ranqueado.")
+    print("\nTop artigos validados:")
+    if not relevant:
+        print("  Nenhum artigo validado como relevante.")
         return
 
-    for position, item in enumerate(ranked[:10], start=1):
-        paper = item.paper
+    for position, item in enumerate(relevant[:10], start=1):
+        paper = item.get("paper")
+        if paper is None:
+            continue
         print(f"\n{position}. {paper.title}")
+        print(f"   Relevancia: {_relevance_label(str(item.get('relevance') or ''))}")
         print(f"   Ano: {paper.year or 'desconhecido'}")
         print(f"   Fonte: {paper.source}")
-        print(f"   Score: {item.score}")
         print(f"   URL: {paper.url or 'sem URL'}")
-        print(f"   Razoes: {', '.join(item.reasons)}")
+        print(f"   Por que entrou: {item.get('relevance_reason') or 'sem justificativa'}")
+        useful_for = item.get("useful_for")
+        if useful_for:
+            print(f"   Util para: {useful_for}")
+
+
+def _relevance_label(relevance: str) -> str:
+    labels = {
+        "high": "alta",
+        "medium": "media",
+        "low": "baixa",
+        "reject": "rejeitada",
+    }
+    return labels.get(relevance, relevance or "desconhecida")
 
 
 if __name__ == "__main__":
