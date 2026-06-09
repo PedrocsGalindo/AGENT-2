@@ -136,12 +136,10 @@ def _print_search_filters(state: SearchState) -> None:
     print(f"    {primary_intent}")
     print()
 
-    _print_filter_list("Conceitos obrigatórios", search_filters.get("required_concepts", []))
-    _print_filter_list("Modalidade obrigatória", search_filters.get("required_modality", []))
-    _print_filter_list("Sinais positivos", search_filters.get("positive_signals", []))
-    _print_filter_list("Sinais negativos", search_filters.get("negative_signals", []))
-    _print_filter_list("Regras de exclusão", search_filters.get("hard_exclusion_rules", []))
-    _print_filter_list("Preferências", search_filters.get("soft_preferences", []))
+    _print_filter_list("Filtros conservadores", search_filters.get("conservative_filters", []))
+    _print_filter_list("Filtros expansivos", search_filters.get("expansive_filters", []))
+    _print_filter_list("Restrições negativas", search_filters.get("negative_constraints", []))
+    _print_filter_list("Não inferido", search_filters.get("not_inferred", []))
     _print_filter_list("Prioridade da validação", search_filters.get("validation_priority", []))
 
 

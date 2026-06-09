@@ -50,12 +50,10 @@ SEARCH_FEEDBACK_DEFAULTS: dict[str, object] = {
 SEARCH_FILTERS_DEFAULTS: dict[str, object] = {
     "stage": "idle",
     "primary_intent": None,
-    "required_concepts": [],
-    "required_modality": [],
-    "positive_signals": [],
-    "negative_signals": [],
-    "hard_exclusion_rules": [],
-    "soft_preferences": [],
+    "conservative_filters": [],
+    "expansive_filters": [],
+    "negative_constraints": [],
+    "not_inferred": [],
     "validation_priority": [],
     "reason": None,
 }

@@ -121,10 +121,11 @@ def validate_papers(
     validations_by_id = {item.paper_id: item for item in result.validated_papers}
 
     search_feedback = state.get("search_feedback", {}) or {}
-    negative_constraints = search_feedback.get("negative_constraints", [])
-
-    if not isinstance(negative_constraints, list):
-        negative_constraints = []
+    search_filters = state.get("search_filters", {}) or {}
+    negative_constraints = [
+        *_list_values(search_filters.get("negative_constraints")),
+        *_list_values(search_feedback.get("negative_constraints")),
+    ]
 
     validated: list[dict[str, object]] = []
 
@@ -218,6 +219,10 @@ def _validation_sort_key(item: dict[str, object]) -> tuple[int, int]:
     paper = item.get("paper")
     year = getattr(paper, "year", None) or 0
     return (relevance_order.get(str(item.get("relevance")), 3), -year)
+
+
+def _list_values(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
 
 
 def _apply_negative_constraints(

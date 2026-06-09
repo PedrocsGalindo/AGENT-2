@@ -223,12 +223,10 @@ def _build_feedback_message(state: SearchState) -> str:
 def _append_search_filters(lines: list[str], search_filters: dict[str, object]) -> None:
     lines.append("Critérios de validação usados:")
     _append_filter_value(lines, "Intenção principal", search_filters.get("primary_intent"))
-    _append_filter_list(lines, "Conceitos obrigatórios", search_filters.get("required_concepts"))
-    _append_filter_list(lines, "Modalidade obrigatória", search_filters.get("required_modality"))
-    _append_filter_list(lines, "Sinais positivos", search_filters.get("positive_signals"))
-    _append_filter_list(lines, "Sinais negativos", search_filters.get("negative_signals"))
-    _append_filter_list(lines, "Regras de exclusão", search_filters.get("hard_exclusion_rules"))
-    _append_filter_list(lines, "Preferências", search_filters.get("soft_preferences"))
+    _append_filter_list(lines, "Filtros conservadores", search_filters.get("conservative_filters"))
+    _append_filter_list(lines, "Filtros expansivos", search_filters.get("expansive_filters"))
+    _append_filter_list(lines, "Restrições negativas", search_filters.get("negative_constraints"))
+    _append_filter_list(lines, "Não inferido", search_filters.get("not_inferred"))
     _append_filter_list(lines, "Prioridade da validação", search_filters.get("validation_priority"))
     lines.append("")
 

@@ -80,24 +80,20 @@ class SearchFilters:
     """Structured semantic filters for paper validation."""
 
     primary_intent: str
-    required_concepts: list[str]
-    required_modality: list[str]
-    positive_signals: list[str]
-    negative_signals: list[str]
-    hard_exclusion_rules: list[str]
-    soft_preferences: list[str]
+    conservative_filters: list[str]
+    expansive_filters: list[str]
+    negative_constraints: list[str]
+    not_inferred: list[str]
     validation_priority: list[str]
     reason: str
 
     def to_state(self) -> dict[str, object]:
         return {
             "primary_intent": self.primary_intent,
-            "required_concepts": self.required_concepts,
-            "required_modality": self.required_modality,
-            "positive_signals": self.positive_signals,
-            "negative_signals": self.negative_signals,
-            "hard_exclusion_rules": self.hard_exclusion_rules,
-            "soft_preferences": self.soft_preferences,
+            "conservative_filters": self.conservative_filters,
+            "expansive_filters": self.expansive_filters,
+            "negative_constraints": self.negative_constraints,
+            "not_inferred": self.not_inferred,
             "validation_priority": self.validation_priority,
             "reason": self.reason,
         }
@@ -276,10 +272,11 @@ class QueryPlanner:
 
         payload = self._generate_json("initial query planning", build_initial_queries_prompt(context))
         queries = self._extract_queries(payload)
-        if not queries:
+        if len(queries) != self.max_queries_per_round:
             raise RuntimeError(
-                "Local model returned JSON, but it did not contain a non-empty "
-                "`queries` list for initial query planning."
+                "Local model returned JSON, but it did not contain a "
+                f"`queries` list with exactly {self.max_queries_per_round} unique "
+                "queries for initial query planning."
             )
         return queries
 
@@ -304,16 +301,17 @@ class QueryPlanner:
                 "primary_intent",
                 "semantic filter planning",
             )[:300],
-            required_concepts=self._optional_string_list(payload, "required_concepts"),
-            required_modality=self._optional_string_list(payload, "required_modality"),
-            positive_signals=self._optional_string_list(payload, "positive_signals"),
-            negative_signals=self._optional_string_list(payload, "negative_signals"),
-            hard_exclusion_rules=self._optional_string_list(
+            conservative_filters=self._optional_string_list(
                 payload,
-                "hard_exclusion_rules",
+                "conservative_filters",
+            ),
+            expansive_filters=self._optional_string_list(payload, "expansive_filters"),
+            negative_constraints=self._optional_string_list(
+                payload,
+                "negative_constraints",
                 max_length=300,
             ),
-            soft_preferences=self._optional_string_list(payload, "soft_preferences"),
+            not_inferred=self._optional_string_list(payload, "not_inferred"),
             validation_priority=self._optional_string_list(payload, "validation_priority"),
             reason=(
                 self._optional_string(payload, "reason")
@@ -340,10 +338,11 @@ class QueryPlanner:
             ),
         )
         queries = self._extract_queries(payload)
-        if not queries:
+        if len(queries) != self.max_queries_per_round:
             raise RuntimeError(
-                "Local model returned JSON, but it did not contain a non-empty "
-                "`queries` list for query refinement."
+                "Local model returned JSON, but it did not contain a "
+                f"`queries` list with exactly {self.max_queries_per_round} unique "
+                "queries for query refinement."
             )
         return queries
 
@@ -597,41 +596,74 @@ class QueryPlanner:
         """Normalize older filter schemas into the official filter schema."""
 
         normalized = dict(payload)
-        alias_map = {
-            "required_concepts": "must_have",
-            "negative_signals": "must_not_have",
-            "soft_preferences": "nice_to_have",
-            "validation_priority": "priority",
-        }
-        list_keys = [
-            "required_concepts",
-            "required_modality",
-            "positive_signals",
-            "negative_signals",
-            "hard_exclusion_rules",
-            "soft_preferences",
-            "validation_priority",
-        ]
 
-        for official_key, legacy_key in alias_map.items():
-            official_items = self._optional_string_list(normalized, official_key)
-            if not official_items and legacy_key in normalized:
-                normalized[official_key] = normalized[legacy_key]
-
-        for key in list_keys:
-            normalized[key] = self._optional_string_list(normalized, key)
+        def merged(keys: list[str], max_length: int = 120) -> list[str]:
+            items: list[str] = []
+            seen: set[str] = set()
+            for key in keys:
+                for item in self._optional_string_list(
+                    normalized,
+                    key,
+                    max_length=max_length,
+                ):
+                    item_key = item.lower()
+                    if item_key in seen:
+                        continue
+                    seen.add(item_key)
+                    items.append(item)
+            return items
 
         primary_intent = self._optional_string(normalized, "primary_intent")
-        has_filter_info = bool(primary_intent) or any(normalized[key] for key in list_keys)
-        if not has_filter_info:
+        conservative_filters = merged(
+            [
+                "conservative_filters",
+                "required_concepts",
+                "required_modality",
+                "must_have",
+            ]
+        )
+        expansive_filters = merged(
+            [
+                "expansive_filters",
+                "positive_signals",
+                "soft_preferences",
+                "nice_to_have",
+            ]
+        )
+        negative_constraints = merged(
+            [
+                "negative_constraints",
+                "negative_signals",
+                "hard_exclusion_rules",
+                "must_not_have",
+            ],
+            max_length=300,
+        )
+        not_inferred = merged(["not_inferred"])
+        validation_priority = merged(["validation_priority", "priority"])
+
+        if not primary_intent and conservative_filters:
+            primary_intent = " ".join(fallback_primary_intent.split())
+        if primary_intent and not conservative_filters:
+            conservative_filters = [primary_intent]
+        if not primary_intent or not conservative_filters:
             raise RuntimeError(
                 "Local model returned JSON for semantic filter planning, but it did "
                 "not contain enough filter information to validate papers."
             )
 
-        if not primary_intent:
-            normalized["primary_intent"] = " ".join(fallback_primary_intent.split())
-        return normalized
+        return {
+            "primary_intent": primary_intent,
+            "conservative_filters": conservative_filters,
+            "expansive_filters": expansive_filters,
+            "negative_constraints": negative_constraints,
+            "not_inferred": not_inferred,
+            "validation_priority": validation_priority,
+            "reason": (
+                self._optional_string(normalized, "reason")
+                or "model did not provide a reason"
+            ),
+        }
 
     def _required_string(
         self,
