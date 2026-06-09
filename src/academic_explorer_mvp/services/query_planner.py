@@ -87,6 +87,7 @@ class SearchFilters:
     hard_exclusion_rules: list[str]
     soft_preferences: list[str]
     validation_priority: list[str]
+    reason: str
 
     def to_state(self) -> dict[str, object]:
         return {
@@ -98,6 +99,7 @@ class SearchFilters:
             "hard_exclusion_rules": self.hard_exclusion_rules,
             "soft_preferences": self.soft_preferences,
             "validation_priority": self.validation_priority,
+            "reason": self.reason,
         }
 
 
@@ -291,6 +293,10 @@ class QueryPlanner:
                 build_plan_filters_prompt(context),
             ),
         )
+        payload = self._normalize_filter_payload(
+            payload,
+            fallback_primary_intent=context.user_query,
+        )
 
         return SearchFilters(
             primary_intent=self._required_string(
@@ -298,42 +304,21 @@ class QueryPlanner:
                 "primary_intent",
                 "semantic filter planning",
             )[:300],
-            required_concepts=self._required_string_list(
-                payload,
-                "required_concepts",
-                "semantic filter planning",
-            ),
-            required_modality=self._required_string_list(
-                payload,
-                "required_modality",
-                "semantic filter planning",
-            ),
-            positive_signals=self._required_string_list(
-                payload,
-                "positive_signals",
-                "semantic filter planning",
-            ),
-            negative_signals=self._required_string_list(
-                payload,
-                "negative_signals",
-                "semantic filter planning",
-            ),
-            hard_exclusion_rules=self._required_string_list(
+            required_concepts=self._optional_string_list(payload, "required_concepts"),
+            required_modality=self._optional_string_list(payload, "required_modality"),
+            positive_signals=self._optional_string_list(payload, "positive_signals"),
+            negative_signals=self._optional_string_list(payload, "negative_signals"),
+            hard_exclusion_rules=self._optional_string_list(
                 payload,
                 "hard_exclusion_rules",
-                "semantic filter planning",
                 max_length=300,
             ),
-            soft_preferences=self._required_string_list(
-                payload,
-                "soft_preferences",
-                "semantic filter planning",
-            ),
-            validation_priority=self._required_string_list(
-                payload,
-                "validation_priority",
-                "semantic filter planning",
-            ),
+            soft_preferences=self._optional_string_list(payload, "soft_preferences"),
+            validation_priority=self._optional_string_list(payload, "validation_priority"),
+            reason=(
+                self._optional_string(payload, "reason")
+                or "model did not provide a reason"
+            )[:500],
         )
 
     def refine_queries(
@@ -604,6 +589,50 @@ class QueryPlanner:
             )
         return payload
 
+    def _normalize_filter_payload(
+        self,
+        payload: dict[str, object],
+        fallback_primary_intent: str,
+    ) -> dict[str, object]:
+        """Normalize older filter schemas into the official filter schema."""
+
+        normalized = dict(payload)
+        alias_map = {
+            "required_concepts": "must_have",
+            "negative_signals": "must_not_have",
+            "soft_preferences": "nice_to_have",
+            "validation_priority": "priority",
+        }
+        list_keys = [
+            "required_concepts",
+            "required_modality",
+            "positive_signals",
+            "negative_signals",
+            "hard_exclusion_rules",
+            "soft_preferences",
+            "validation_priority",
+        ]
+
+        for official_key, legacy_key in alias_map.items():
+            official_items = self._optional_string_list(normalized, official_key)
+            if not official_items and legacy_key in normalized:
+                normalized[official_key] = normalized[legacy_key]
+
+        for key in list_keys:
+            normalized[key] = self._optional_string_list(normalized, key)
+
+        primary_intent = self._optional_string(normalized, "primary_intent")
+        has_filter_info = bool(primary_intent) or any(normalized[key] for key in list_keys)
+        if not has_filter_info:
+            raise RuntimeError(
+                "Local model returned JSON for semantic filter planning, but it did "
+                "not contain enough filter information to validate papers."
+            )
+
+        if not primary_intent:
+            normalized["primary_intent"] = " ".join(fallback_primary_intent.split())
+        return normalized
+
     def _required_string(
         self,
         payload: dict[str, object],
@@ -661,6 +690,28 @@ class QueryPlanner:
         strings: list[str] = []
         seen: set[str] = set()
         for item in value:
+            text = " ".join(str(item).split())
+            key_text = text.lower()
+            if not text or key_text in seen:
+                continue
+            seen.add(key_text)
+            strings.append(text[:max_length])
+        return strings
+
+    def _optional_string_list(
+        self,
+        payload: dict[str, object],
+        key: str,
+        max_length: int = 120,
+    ) -> list[str]:
+        value = payload.get(key)
+        if value is None:
+            return []
+        raw_items = value if isinstance(value, list) else [value]
+
+        strings: list[str] = []
+        seen: set[str] = set()
+        for item in raw_items:
             text = " ".join(str(item).split())
             key_text = text.lower()
             if not text or key_text in seen:

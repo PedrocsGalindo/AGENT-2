@@ -57,6 +57,7 @@ SEARCH_FILTERS_DEFAULTS: dict[str, object] = {
     "hard_exclusion_rules": [],
     "soft_preferences": [],
     "validation_priority": [],
+    "reason": None,
 }
 
 

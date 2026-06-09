@@ -19,7 +19,7 @@ class PromptSpec:
 
 
 INITIAL_QUERIES_PROMPT_VERSION = "1.0.5"
-PLAN_FILTERS_PROMPT_VERSION = "1.0.1"
+PLAN_FILTERS_PROMPT_VERSION = "1.0.2"
 REFINE_QUERIES_PROMPT_VERSION = "1.0.3"
 FEEDBACK_ANALYSIS_PROMPT_VERSION = "1.0.0"
 VALIDATE_PAPERS_PROMPT_VERSION = "1.0.1"
@@ -899,124 +899,121 @@ Exact shape:
 def build_plan_filters_prompt(context: SearchContext) -> PromptSpec:
     """Prompt for planning semantic validation filters."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Return only one valid JSON object. No markdown. No explanation.
 
 You are planning semantic filters for academic paper validation.
 
-User refined topic:
+Refined user topic:
 {context.user_query}
 
 Task:
-Extract explicit semantic validation criteria from the refined topic.
-These filters will be used internally before validating candidate papers.
+Create compact semantic validation filters from the refined user topic.
+
+These filters will later be used to decide whether candidate papers match the user's academic intent.
+
+Important:
+Do not generate search queries.
+Do not validate papers here.
+Do not invent a new topic.
+Do not rename JSON keys.
+Always include all required keys.
+All fields except primary_intent and reason must be lists.
+If a list field has no values, return an empty list.
+Do not add extra keys.
 
 Language rule:
-All filter values, reasons, rules, concepts, and examples must be in English.
-Keep JSON keys in English.
+All JSON values must be in English.
+JSON keys must be in English.
 
-Core goal:
-Separate what is mandatory from what is only useful or preferred.
-Do not generate search queries here.
-Do not validate papers here.
+Official JSON schema:
+{{
+  "primary_intent": "string",
+  "required_concepts": ["string"],
+  "required_modality": ["string"],
+  "positive_signals": ["string"],
+  "negative_signals": ["string"],
+  "hard_exclusion_rules": ["string"],
+  "soft_preferences": ["string"],
+  "validation_priority": ["string"],
+  "reason": "string"
+}}
 
-Rules:
-- Extract criteria only from the refined topic.
-- Do not invent a focus that the user did not provide.
-- Do not add datasets, methods, metrics, domains, modalities, or applications unless they are stated or clearly implied.
-- The primary_intent must describe the main academic task or problem.
-- required_concepts must list concepts that must be present for a paper to be relevant.
-- required_modality must list required input modality terms only when the topic explicitly implies a modality.
-- Explicit modalities include audio, speech, sound, acoustic signal, image, video, text, graph, time series, sensor data, tabular data, network traffic, source code, logs, and multimodal data.
-- If the refined topic does not contain an explicit modality, required_modality must be an empty array.
-- positive_signals must list terms or concepts that are good evidence of relevance.
-- negative_signals must list terms or concepts that indicate mismatch.
-- hard_exclusion_rules must be strict rules that force exclusion during validation.
-- soft_preferences must list useful but non-mandatory aspects.
-- validation_priority must be an ordered list of what matters most when validating papers.
-- Use an empty array for any list field that has no applicable items.
+Field meaning:
+- primary_intent: the main academic task, problem, or research goal.
+- required_concepts: mandatory concepts that a relevant paper must satisfy.
+- required_modality: mandatory modality, data type, or input signal, if any.
+- positive_signals: terms or concepts that support relevance but are not always mandatory.
+- negative_signals: terms or concepts that indicate mismatch.
+- hard_exclusion_rules: clear rules for excluding irrelevant papers.
+- soft_preferences: useful but optional signals.
+- validation_priority: ordered criteria for validating papers.
+- reason: one short reason explaining the filters.
 
-Mandatory topic decomposition:
-- Identify the central task, the required modality, and the target phenomenon.
-- If the refined topic contains a modality, that modality must become a required modality.
-- If the refined topic contains a detection/classification task, the target phenomenon must become a required concept.
-- For a paper to be relevant, it must satisfy both:
-  1. the central task or problem;
-  2. the required modality, when a modality is present.
-- Do not treat broad related areas as relevant if they miss the required modality or target phenomenon.
+Schema rules:
+- Always include all required keys.
+- All fields except primary_intent and reason must be lists.
+- If a field has no values, return an empty list.
+- Do not rename keys.
+- Do not add extra keys.
 
-Required modality interpretation:
-- required_modality should contain acceptable equivalent terms for the same modality.
-- A paper satisfies required_modality when it clearly matches at least one of these terms.
-- Example: for audio-based topics, acceptable terms may include audio, sound, speech, acoustic signal, acoustic event, or audio signal.
-- A paper about video, image, text, social media, or general multimodal analysis must not be considered relevant unless the required modality is central.
+Length limits:
+- required_concepts: max 4 items.
+- required_modality: max 6 items.
+- positive_signals: max 10 items.
+- negative_signals: max 10 items.
+- hard_exclusion_rules: max 6 items.
+- soft_preferences: max 8 items.
+- validation_priority: max 6 items.
+- reason: one short sentence.
 
-Required concept interpretation:
-- required_concepts should contain mandatory topic concepts, not loose keywords.
-- Prefer phrases such as "violence detection", "fake news detection", "plant disease detection", or "label noise".
-- Do not split a mandatory concept into vague words if that would allow false positives.
+Filtering logic:
+A relevant paper must match the user's main academic intent.
+If the topic contains a mandatory task, method, domain, modality, dataset, population, metric, or application, include it in required_concepts or required_modality.
+If the topic should not be confused with nearby topics, include those mismatches in negative_signals.
+Do not accept a paper only because it matches one isolated word.
+A paper that matches a secondary term but misses the main task should be excluded.
+A paper that matches the main task but misses a required modality should be excluded.
 
-Computer Science validation guidance:
-Plan filters so validation prefers papers with clear Computer Science or strongly computational contributions.
-A paper should be relevant only when there is clear evidence in the title, abstract, keywords, or venue that it includes a central computational contribution.
+Computer Science relevance:
+If the topic is computational, prefer papers with clear computational contributions, such as algorithms, models, systems, datasets, benchmarks, experiments, architectures, pipelines, software, or technical evaluation.
+Exclude purely legal, social, historical, ethical, or conceptual papers when they do not contain a central computational contribution.
 
-Positive computational signals include:
-- algorithms, models, computational methods, systems, architectures, pipelines, frameworks, software, implementation, or computational tools;
-- areas such as Artificial Intelligence, Machine Learning, Deep Learning, Data Science, Information Retrieval, NLP, Computer Vision, Audio Processing, Signal Processing, Cybersecurity, Software Engineering, Databases, Distributed Systems, HCI, or related areas;
-- empirical evaluation of computational techniques, including benchmarks, datasets, metrics, experiments, performance comparison, ablation studies, or system validation;
-- application of computational methods in domains such as healthcare, education, law, finance, agriculture, industry, or social media, when the computational method is central.
-
-General hard exclusions:
-The hard_exclusion_rules field must include these general exclusions when they apply:
-- Exclude papers without a clear Computer Science or computational contribution.
-- Exclude papers that only share superficial keywords with the refined topic.
-- Exclude papers from non-computational domains when computation is not central to the method, model, system, dataset, or technical evaluation.
-- Exclude conceptual, legal, ethical, social, or historical papers without a concrete computational contribution.
-- Exclude papers that mention technology only casually.
-- Exclude papers that do not match the user's primary search intent.
-
-Example:
-User refined topic: audio-based violence detection review
-Output:
+Example for topic: audio-based violence detection review
 {{
   "primary_intent": "computational audio-based violence detection",
   "required_concepts": ["violence detection"],
   "required_modality": ["audio", "sound", "speech", "acoustic signal", "audio signal"],
   "positive_signals": [
     "audio-based violence detection",
-    "audio signal",
+    "sound-based violence detection",
     "acoustic event detection",
-    "violent event detection",
-    "aggression detection",
     "audio classification",
     "signal processing",
     "machine learning model",
     "deep learning model",
     "dataset",
     "benchmark",
-    "experimental evaluation",
     "survey",
     "review"
   ],
   "negative_signals": [
-    "plant disease detection",
     "hate speech detection",
     "deepfake detection",
     "video-only violence detection",
     "image-only violence detection",
     "visual surveillance only",
-    "intimate partner violence prevalence",
-    "domestic violence healthcare disclosure",
+    "multimodal violence detection",
+    "audio-visual violence detection",
     "gender-based violence policy",
     "social science review",
     "medical meta-analysis"
   ],
   "hard_exclusion_rules": [
     "Exclude if the paper is not about violence detection or violent/aggressive event detection.",
-    "Exclude if the paper does not use audio, sound, speech, acoustic signal, or audio signal as a central input modality.",
-    "Exclude if the paper is mainly about plant disease, hate speech, deepfakes, healthcare disclosure, prevalence, policy, sociology, or non-computational violence studies.",
-    "Exclude if the paper is about video-only, image-only, or visual-only violence detection.",
-    "Exclude if the paper only shares the word violence but does not study computational violence detection.",
-    "Exclude if the paper has no clear Computer Science or computational contribution."
+    "Exclude if audio, sound, speech, acoustic signal, or audio signal is not a central input modality.",
+    "Exclude if the paper is mainly about hate speech, deepfakes, policy, sociology, healthcare disclosure, or non-computational violence studies.",
+    "Exclude if the paper is mainly video-only, image-only, visual-only, multimodal, or audio-visual violence detection.",
+    "Exclude if the paper only shares the word violence but does not study computational violence detection."
   ],
   "soft_preferences": [
     "review or survey papers",
@@ -1029,13 +1026,29 @@ Output:
     "computational efficiency"
   ],
   "validation_priority": [
-    "required modality match",
     "violence detection task match",
+    "required audio modality match",
     "computer science contribution",
     "hard exclusions",
     "review or survey usefulness",
     "research usefulness"
-  ]
+  ],
+  "reason": "The filters separate audio-based computational violence detection from visual, multimodal, textual, and social-science violence topics."
+}}
+
+Now return the JSON object for the current refined user topic.
+
+Required JSON shape:
+{{
+  "primary_intent": "string",
+  "required_concepts": ["string"],
+  "required_modality": ["string"],
+  "positive_signals": ["string"],
+  "negative_signals": ["string"],
+  "hard_exclusion_rules": ["string"],
+  "soft_preferences": ["string"],
+  "validation_priority": ["string"],
+  "reason": "string"
 }}
 """
 
@@ -1526,7 +1539,6 @@ Required JSON shape:
         },
     )
 
-
 def build_continue_decision_prompt(
     context: SearchContext,
     round_number: int,
@@ -1559,7 +1571,6 @@ def build_continue_decision_prompt(
             "purpose": "continue_decision",
         },
     )
-
 
 def _feedback_text(feedback: dict[str, object], key: str) -> str:
     value = feedback.get(key)
