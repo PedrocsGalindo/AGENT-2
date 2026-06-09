@@ -16,17 +16,6 @@ class LocalModelJsonError(LocalModelError):
     """The local model answered, but not with valid JSON."""
 
 
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-except ModuleNotFoundError as exc:
-    missing = exc.name or "transformers"
-    raise LocalModelError(
-        f"Missing dependency {missing!r} for the local agent. "
-        "Install model dependencies with: py -m pip install -e \".[local-model]\". "
-        "The model is configured by ACADEMIC_EXPLORER_AGENT_MODEL_ID."
-    ) from exc
-
-
 class LocalModel:
     """Load and call a local text-generation model.
 
@@ -53,6 +42,9 @@ class LocalModel:
             )
 
         try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+
             tokenizer = AutoTokenizer.from_pretrained(config.agent_model_id)
 
             model_kwargs: dict[str, Any] = {
@@ -68,16 +60,9 @@ class LocalModel:
             if tokenizer.pad_token_id is None:
                 tokenizer.pad_token = tokenizer.eos_token
 
-            self._configure_generation(model, tokenizer)
-
             self._model = model
             self._tokenizer = tokenizer
-
-            self._pipeline = pipeline(
-                "text-generation",
-                model=self._model,
-                tokenizer=self._tokenizer,
-            )
+            self._torch = torch
 
         except Exception as exc:
             raise LocalModelError(
@@ -86,61 +71,74 @@ class LocalModel:
                 f"Original error: {type(exc).__name__}: {exc}"
             ) from exc
 
-    def _configure_generation(self, model: AutoModelForCausalLM, tokenizer: AutoTokenizer) -> None:
-        """Configure generation directly on the model.
-
-        Important:
-        - Use max_new_tokens, not max_length.
-        - Do not pass generation_config into pipeline().
-        - Do not pass max_new_tokens/do_sample/temperature in pipeline calls.
-        """
-
-        model.generation_config.max_length = None
-        model.generation_config.max_new_tokens = self.config.agent_max_new_tokens
-
-        model.generation_config.do_sample = self.config.agent_temperature > 0
-
-        if self.config.agent_temperature > 0:
-            model.generation_config.temperature = self.config.agent_temperature
-        else:
-            model.generation_config.temperature = None
-
-        model.generation_config.pad_token_id = tokenizer.pad_token_id
-        model.generation_config.eos_token_id = tokenizer.eos_token_id
-
     def generate(self, prompt: str) -> str:
         """Generate text from the local model."""
 
-        pipeline_args: dict[str, Any] = {
-            "return_full_text": False,
-            "clean_up_tokenization_spaces": False,
+        formatted_prompt = self._format_prompt(prompt)
+        inputs = self._tokenizer(formatted_prompt, return_tensors="pt")
+        inputs = self._move_inputs_to_model_device(inputs)
+        input_token_count = inputs["input_ids"].shape[-1]
+
+        generation_args: dict[str, Any] = {
+            "max_new_tokens": self.config.agent_max_new_tokens,
+            "do_sample": self.config.agent_temperature > 0,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "eos_token_id": self._tokenizer.eos_token_id,
         }
+        if self.config.agent_temperature > 0:
+            generation_args["temperature"] = self.config.agent_temperature
 
         try:
-            outputs = self._pipeline(
-                self._format_prompt(prompt),
-                **pipeline_args,
-            )
+            with self._torch.inference_mode():
+                output_ids = self._model.generate(**inputs, **generation_args)
         except Exception as exc:
             raise LocalModelError(
                 "Local model generation failed. "
                 f"Original error: {type(exc).__name__}: {exc}"
             ) from exc
 
-        if not outputs:
+        if output_ids is None or len(output_ids) == 0:
             raise LocalModelError("Local model returned no output.")
 
-        first = outputs[0]
-
-        if isinstance(first, dict):
-            text = str(first.get("generated_text") or "")
-        else:
-            text = str(first)
+        new_token_ids = output_ids[0][input_token_count:]
+        text = self._tokenizer.decode(
+            new_token_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
 
         if not text.strip():
             raise LocalModelError("Local model returned empty text.")
 
         return text
+
+    def _move_inputs_to_model_device(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        device = self._model_device()
+        if device is None:
+            return inputs
+
+        moved: dict[str, Any] = {}
+        for key, value in inputs.items():
+            if hasattr(value, "to"):
+                moved[key] = value.to(device)
+            else:
+                moved[key] = value
+        return moved
+
+    def _model_device(self) -> Any | None:
+        device = getattr(self._model, "device", None)
+        if device is not None and str(device) != "meta":
+            return device
+
+        try:
+            parameter = next(self._model.parameters())
+        except StopIteration:
+            return None
+
+        device = getattr(parameter, "device", None)
+        if device is None or str(device) == "meta":
+            return None
+        return device
 
     def _format_prompt(self, prompt: str) -> str:
         if not hasattr(self._tokenizer, "apply_chat_template"):
