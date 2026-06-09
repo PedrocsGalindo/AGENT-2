@@ -23,11 +23,7 @@ def ask_paper_feedback(state: SearchState) -> SearchState:
         stage="awaiting_paper_feedback",
         pending_answer=None,
         status=None,
-        message=_build_feedback_message(
-            relevant_papers=state.get("relevant_papers", []),
-            excluded_papers=state.get("excluded_papers", []),
-            summary=_state_text(state.get("validation_summary")),
-        ),
+        message=_build_feedback_message(state),
         round=int(feedback.get("round") or 0) + 1,
     )
     new_state["stop_reason"] = "awaiting paper feedback"
@@ -147,6 +143,8 @@ def analyze_search_feedback(state: SearchState, planner: QueryPlanner) -> Search
     new_state["relevant_papers"] = []
     new_state["excluded_papers"] = []
     new_state["validation_summary"] = None
+    new_state["model_validation_summary"] = None
+    new_state["validation_counts"] = {}
     new_state["known_paper_ids"] = []
     new_state["last_new_paper_count"] = 0
     new_state["last_new_paper_ids"] = []
@@ -172,14 +170,14 @@ def analyze_search_feedback(state: SearchState, planner: QueryPlanner) -> Search
     return new_state
 
 
-def _build_feedback_message(
-    relevant_papers: list[dict[str, object]],
-    excluded_papers: list[dict[str, object]],
-    summary: str,
-) -> str:
+def _build_feedback_message(state: SearchState) -> str:
+    relevant_papers = state.get("relevant_papers", [])
+    excluded_papers = state.get("excluded_papers", [])
     lines = []
-    if summary:
-        lines.extend(["", f"Resumo da validacao: {summary}"])
+
+    _append_search_filters(lines, state.get("search_filters", {}) or {})
+    _append_validation_summary(lines, state)
+
     if not relevant_papers:
         lines.append("  Nenhum artigo validado como relevante.")
     for position, item in enumerate(relevant_papers, start=1):
@@ -220,6 +218,93 @@ def _build_feedback_message(
         ]
     )
     return "\n".join(lines)
+
+
+def _append_search_filters(lines: list[str], search_filters: dict[str, object]) -> None:
+    lines.append("Critérios de validação usados:")
+    _append_filter_value(lines, "Intenção principal", search_filters.get("primary_intent"))
+    _append_filter_list(lines, "Conceitos obrigatórios", search_filters.get("required_concepts"))
+    _append_filter_list(lines, "Modalidade obrigatória", search_filters.get("required_modality"))
+    _append_filter_list(lines, "Sinais positivos", search_filters.get("positive_signals"))
+    _append_filter_list(lines, "Sinais negativos", search_filters.get("negative_signals"))
+    _append_filter_list(lines, "Regras de exclusão", search_filters.get("hard_exclusion_rules"))
+    _append_filter_list(lines, "Preferências", search_filters.get("soft_preferences"))
+    _append_filter_list(lines, "Prioridade da validação", search_filters.get("validation_priority"))
+    lines.append("")
+
+
+def _append_filter_value(lines: list[str], label: str, value: object) -> None:
+    text = _state_text(value) or "nenhum"
+    lines.extend([f"  {label}:", f"    {text}", ""])
+
+
+def _append_filter_list(lines: list[str], label: str, values: object) -> None:
+    lines.append(f"  {label}:")
+    items = []
+    if isinstance(values, list):
+        items = [_state_text(value) for value in values]
+        items = [value for value in items if value]
+
+    if not items:
+        lines.append("    nenhum")
+    else:
+        for value in items:
+            lines.append(f"    - {value}")
+    lines.append("")
+
+
+def _append_validation_summary(lines: list[str], state: SearchState) -> None:
+    counts = _validation_counts_from_state(state)
+    lines.extend(
+        [
+            "Resumo da validação:",
+            f"  Total avaliados: {counts['total']}",
+            f"  Incluídos: {counts['included']}",
+            f"  Excluídos: {counts['excluded']}",
+            f"  Novos artigos úteis na última rodada: {counts['new_useful']}",
+            "",
+            "Distribuição por relevância:",
+            f"  Alta: {counts['high']}",
+            f"  Média: {counts['medium']}",
+            f"  Baixa: {counts['low']}",
+            f"  Rejeitada: {counts['reject']}",
+            "",
+        ]
+    )
+
+
+def _validation_counts_from_state(state: SearchState) -> dict[str, int]:
+    counts = state.get("validation_counts")
+    if isinstance(counts, dict) and counts:
+        return {
+            "total": int(counts.get("total") or 0),
+            "included": int(counts.get("included") or 0),
+            "excluded": int(counts.get("excluded") or 0),
+            "new_useful": int(counts.get("new_useful") or 0),
+            "high": int(counts.get("high") or 0),
+            "medium": int(counts.get("medium") or 0),
+            "low": int(counts.get("low") or 0),
+            "reject": int(counts.get("reject") or 0),
+        }
+
+    validated = state.get("validated_papers", [])
+    relevance_counts = _count_relevances(validated)
+    return {
+        "total": len(validated),
+        "included": len(state.get("relevant_papers", [])),
+        "excluded": len(state.get("excluded_papers", [])),
+        "new_useful": int(state.get("last_new_useful_count", 0) or 0),
+        **relevance_counts,
+    }
+
+
+def _count_relevances(validated_papers: list[dict[str, object]]) -> dict[str, int]:
+    counts = {"high": 0, "medium": 0, "low": 0, "reject": 0}
+    for item in validated_papers:
+        relevance = _state_text(item.get("relevance")).lower()
+        if relevance in counts:
+            counts[relevance] += 1
+    return counts
 
 
 def _relevance_label(relevance: str) -> str:

@@ -173,11 +173,45 @@ def validate_papers(
     new_state["validated_papers"] = validated
     new_state["relevant_papers"] = relevant
     new_state["excluded_papers"] = excluded
-    new_state["validation_summary"] = result.summary
+    new_state["validation_counts"] = _validation_counts(
+        validated=validated,
+        relevant=relevant,
+        excluded=excluded,
+        new_useful_count=len(new_useful),
+    )
+    new_state["validation_summary"] = (
+        f"Validated {len(validated)} papers: "
+        f"{len(relevant)} included and {len(excluded)} excluded."
+    )
+    new_state["model_validation_summary"] = result.summary
     new_state["ranked_papers"] = []
     new_state["last_new_useful_count"] = len(new_useful)
 
     return new_state
+
+
+def _validation_counts(
+    validated: list[dict[str, object]],
+    relevant: list[dict[str, object]],
+    excluded: list[dict[str, object]],
+    new_useful_count: int,
+) -> dict[str, int]:
+    counts = {
+        "total": len(validated),
+        "included": len(relevant),
+        "excluded": len(excluded),
+        "new_useful": new_useful_count,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "reject": 0,
+    }
+    for item in validated:
+        relevance = str(item.get("relevance") or "").lower()
+        if relevance in {"high", "medium", "low", "reject"}:
+            counts[relevance] += 1
+    return counts
+
 
 def _validation_sort_key(item: dict[str, object]) -> tuple[int, int]:
     relevance_order = {"high": 0, "medium": 1, "low": 2, "reject": 3}

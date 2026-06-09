@@ -935,6 +935,26 @@ Rules:
 - validation_priority must be an ordered list of what matters most when validating papers.
 - Use an empty array for any list field that has no applicable items.
 
+Mandatory topic decomposition:
+- Identify the central task, the required modality, and the target phenomenon.
+- If the refined topic contains a modality, that modality must become a required modality.
+- If the refined topic contains a detection/classification task, the target phenomenon must become a required concept.
+- For a paper to be relevant, it must satisfy both:
+  1. the central task or problem;
+  2. the required modality, when a modality is present.
+- Do not treat broad related areas as relevant if they miss the required modality or target phenomenon.
+
+Required modality interpretation:
+- required_modality should contain acceptable equivalent terms for the same modality.
+- A paper satisfies required_modality when it clearly matches at least one of these terms.
+- Example: for audio-based topics, acceptable terms may include audio, sound, speech, acoustic signal, acoustic event, or audio signal.
+- A paper about video, image, text, social media, or general multimodal analysis must not be considered relevant unless the required modality is central.
+
+Required concept interpretation:
+- required_concepts should contain mandatory topic concepts, not loose keywords.
+- Prefer phrases such as "violence detection", "fake news detection", "plant disease detection", or "label noise".
+- Do not split a mandatory concept into vague words if that would allow false positives.
+
 Computer Science validation guidance:
 Plan filters so validation prefers papers with clear Computer Science or strongly computational contributions.
 A paper should be relevant only when there is clear evidence in the title, abstract, keywords, or venue that it includes a central computational contribution.
@@ -955,12 +975,68 @@ The hard_exclusion_rules field must include these general exclusions when they a
 - Exclude papers that do not match the user's primary search intent.
 
 Example:
-User refined topic: noisy labels in medical image classification
+User refined topic: audio-based violence detection review
 Output:
-{{"primary_intent":"computational methods for medical image classification under noisy labels","required_concepts":["noisy labels","medical image classification"],"required_modality":["image","medical image"],"positive_signals":["robust learning","label noise","classification model","medical imaging dataset","experimental evaluation"],"negative_signals":["image denoising","clinical diagnosis only","legal analysis","policy discussion","non-computational review"],"hard_exclusion_rules":["Exclude if the paper has no clear Computer Science or computational contribution.","Exclude if the paper is not about noisy labels or label noise in medical image classification.","Exclude if the paper does not study an algorithm, model, method, dataset, system, or technical evaluation.","Exclude if the paper only shares superficial keywords with the refined topic."],"soft_preferences":["methods","datasets","benchmarks","evaluation metrics","model robustness"],"validation_priority":["computer science contribution","primary task match","required concepts","required modality","hard exclusions","research usefulness"]}}
-
-Required JSON shape:
-{{"primary_intent":"main academic task/problem","required_concepts":["concept that must be present"],"required_modality":["required modality if any"],"positive_signals":["terms or concepts that indicate relevance"],"negative_signals":["terms or concepts that indicate mismatch"],"hard_exclusion_rules":["rules that force exclusion"],"soft_preferences":["useful but not mandatory preferences"],"validation_priority":["ordered list of what matters most"]}}
+{{
+  "primary_intent": "computational audio-based violence detection",
+  "required_concepts": ["violence detection"],
+  "required_modality": ["audio", "sound", "speech", "acoustic signal", "audio signal"],
+  "positive_signals": [
+    "audio-based violence detection",
+    "audio signal",
+    "acoustic event detection",
+    "violent event detection",
+    "aggression detection",
+    "audio classification",
+    "signal processing",
+    "machine learning model",
+    "deep learning model",
+    "dataset",
+    "benchmark",
+    "experimental evaluation",
+    "survey",
+    "review"
+  ],
+  "negative_signals": [
+    "plant disease detection",
+    "hate speech detection",
+    "deepfake detection",
+    "video-only violence detection",
+    "image-only violence detection",
+    "visual surveillance only",
+    "intimate partner violence prevalence",
+    "domestic violence healthcare disclosure",
+    "gender-based violence policy",
+    "social science review",
+    "medical meta-analysis"
+  ],
+  "hard_exclusion_rules": [
+    "Exclude if the paper is not about violence detection or violent/aggressive event detection.",
+    "Exclude if the paper does not use audio, sound, speech, acoustic signal, or audio signal as a central input modality.",
+    "Exclude if the paper is mainly about plant disease, hate speech, deepfakes, healthcare disclosure, prevalence, policy, sociology, or non-computational violence studies.",
+    "Exclude if the paper is about video-only, image-only, or visual-only violence detection.",
+    "Exclude if the paper only shares the word violence but does not study computational violence detection.",
+    "Exclude if the paper has no clear Computer Science or computational contribution."
+  ],
+  "soft_preferences": [
+    "review or survey papers",
+    "audio-only methods",
+    "datasets",
+    "benchmarks",
+    "feature extraction",
+    "model comparison",
+    "real-time detection",
+    "computational efficiency"
+  ],
+  "validation_priority": [
+    "required modality match",
+    "violence detection task match",
+    "computer science contribution",
+    "hard exclusions",
+    "review or survey usefulness",
+    "research usefulness"
+  ]
+}}
 """
 
     return PromptSpec(
@@ -1088,6 +1164,28 @@ Rules:
 - If the paper title/abstract is about a different task, domain, or modality, exclude it.
 - If the paper only shares an isolated term from the query but studies another meaning, domain, or non-computational topic, exclude it.
 - Do not include a paper only because it matches one positive signal while failing a required concept, required modality, or hard exclusion rule.
+
+Mandatory inclusion gate:
+Before assigning high, medium, or low, check all mandatory gates.
+
+A paper can be included only if:
+1. It matches the primary_intent when primary_intent is not "none";
+2. It satisfies the required_concepts;
+3. It satisfies the required_modality when required_modality is not empty;
+4. It does not violate any hard_exclusion_rule;
+5. It has a clear Computer Science or computational contribution.
+
+If any mandatory gate fails, the paper must be:
+relevance="reject"
+decision="exclude"
+
+Required modality gate:
+When required_modality is not empty, the paper must clearly use the required modality as a central input, data type, or analysis target.
+Mentioning the modality casually is not enough.
+If the paper uses another modality instead, exclude it.
+If the paper is multimodal, include it only when the required modality is central to the method or evaluation.
+
+Do not use high, medium, or low for papers that fail a mandatory gate.
 
 Relevance labels:
 - high: directly related to the revised topic and useful for the user's intent.

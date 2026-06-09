@@ -23,6 +23,8 @@ class SearchState(TypedDict, total=False):
     relevant_papers: list[dict[str, object]]
     excluded_papers: list[dict[str, object]]
     validation_summary: str | None
+    model_validation_summary: str | None
+    validation_counts: dict[str, int]
     known_paper_ids: list[str]
     last_new_paper_count: int
     last_new_paper_ids: list[str]
