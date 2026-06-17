@@ -1,6 +1,8 @@
 """Query planning powered by the local model."""
 
 from dataclasses import dataclass
+import re
+import unicodedata
 
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.paper import Paper
@@ -143,6 +145,10 @@ class QueryPlanner:
             "query context assessment",
         )
         reason = self._optional_string(payload, "reason") or "model did not provide a reason"
+
+        forced_assessment = self._forced_query_context_assessment(context.user_query)
+        if forced_assessment is not None:
+            return forced_assessment
 
         return QueryContextAssessment(
             has_enough_context=has_enough_context,
@@ -532,6 +538,125 @@ class QueryPlanner:
                 f"Local model failed during {step_name}: {exc} "
                 "There is no deterministic fallback; fix the local model setup or prompt."
             ) from exc
+
+    def _forced_query_context_assessment(
+        self,
+        user_query: str,
+    ) -> QueryContextAssessment | None:
+        """Correct common context-assessment mistakes from small local models."""
+
+        text = self._normalized_query_text(user_query)
+        tokens = set(text.split())
+
+        if not text:
+            return None
+
+        if text.startswith("automated shopping") and not tokens.intersection(
+            {"agent", "agents", "llm", "vlm", "ecommerce", "checkout", "recommendation", "retail"}
+        ):
+            return QueryContextAssessment(
+                has_enough_context=False,
+                reason=(
+                    "the term automated shopping is ambiguous and may refer to "
+                    "shopping agents, e-commerce automation, checkout automation, "
+                    "recommendation systems, or retail operations"
+                ),
+            )
+
+        general_phrases = {
+            "geral",
+            "general",
+            "overview",
+            "visao geral",
+            "quero entender",
+            "panorama",
+            "broad",
+            "review",
+            "survey",
+            "state of the art",
+            "trend",
+            "trends",
+        }
+        if any(phrase in text for phrase in general_phrases):
+            return QueryContextAssessment(
+                has_enough_context=True,
+                reason="the user explicitly indicated a broad general direction for the topic",
+            )
+
+        specific_focus_terms = {
+            "using",
+            "with",
+            "via",
+            "lstm",
+            "transformer",
+            "rag",
+            "llm",
+            "vlm",
+            "sentiment",
+            "dataset",
+            "datasets",
+            "benchmark",
+            "benchmarks",
+            "metric",
+            "metrics",
+            "comparison",
+            "evaluation",
+            "deployment",
+            "feature",
+            "features",
+            "model",
+            "models",
+        }
+        if tokens.intersection(specific_focus_terms):
+            return QueryContextAssessment(
+                has_enough_context=True,
+                reason="the query includes a specific research focus enough to guide the search",
+            )
+
+        task_terms = {
+            "classification",
+            "detection",
+            "forecasting",
+            "prediction",
+            "recognition",
+        }
+        modality_terms = {
+            "acoustic",
+            "audio",
+            "image",
+            "multimedia",
+            "multimodal",
+            "sound",
+            "speech",
+            "text",
+            "video",
+            "visual",
+        }
+
+        if tokens.intersection(modality_terms) and tokens.intersection(task_terms):
+            return QueryContextAssessment(
+                has_enough_context=False,
+                reason=(
+                    "the query specifies a task and modality, but not whether the "
+                    "user wants a general direction or a specific research focus"
+                ),
+            )
+
+        if len(tokens) <= 3 and tokens.intersection(task_terms):
+            return QueryContextAssessment(
+                has_enough_context=False,
+                reason=(
+                    "the query is broad and does not specify whether the user wants "
+                    "a general direction or a specific research focus"
+                ),
+            )
+
+        return None
+
+    def _normalized_query_text(self, value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value)
+        ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+        return " ".join(re.findall(r"[a-z0-9]+", ascii_text.lower()))
 
     def _extract_queries(self, payload: object) -> list[str]:
         if isinstance(payload, dict):

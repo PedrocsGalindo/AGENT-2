@@ -105,7 +105,7 @@ def build_graph(config: AppConfig):
             "wait_for_user": "wait_for_user",
         },
     )
-    graph.add_edge("commit_enriched_query", "enough_context_query")
+    graph.add_edge("commit_enriched_query", "plan_filters")
 
     graph.add_edge("plan_filters", "plan_queries")
     graph.add_edge("plan_queries", "wait_for_user")
@@ -192,6 +192,9 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
         if preview_stage == "awaiting_query_preview":
             queries = state.get("pending_queries", [])
             round_number = preview.get("round") or state.get("round_number", 0) + 1
+
+            if stage == "ready_to_search" and state.get("round_number", 0) == 0:
+                print("\nOk, compreendi o que voce deseja procurar.")
 
             print(f"\nQueries que serao usadas na rodada {round_number}:")
             if queries:

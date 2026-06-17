@@ -25,7 +25,7 @@ FEEDBACK_ANALYSIS_PROMPT_VERSION = "1.1.0"
 VALIDATE_PAPERS_PROMPT_VERSION = "1.1.0"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.1"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
-ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.1.0"
+ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.1.1"
 CONTEXT_QUESTION_PROMPT_VERSION = "1.1.0"
 REWRITE_USER_QUERY_PROMPT_VERSION = "1.1.0"
 REWRITE_FROM_USER_REVISION_PROMPT_VERSION = "1.1.0"
@@ -55,7 +55,7 @@ If a general search can be created, but the desired meaning or direction is ambi
 
 Use has_enough_context=true when:
 - the user explicitly asks for a general search, overview, introduction, broad learning, trend analysis, review, survey, or state of the art;
-- or the query contains a clear topic plus a specific research focus, such as method, dataset, data source, metric, comparison, restriction, application, domain, modality, or specific problem;
+- or the query contains a clear topic plus a specific research focus enough to guide the search, such as method, dataset, data source, metric, comparison, restriction, application, domain, or specific problem. A modality alone is not enough;
 - and academic search queries can be generated without guessing the intended meaning.
 
 Use has_enough_context=false when:
@@ -78,7 +78,7 @@ User query: stock prediction
 Output:
 {{"has_enough_context":false,"reason":"the query is searchable, but it does not specify whether the user wants a general search or a specific focus such as methods, data sources, assets, markets, time horizon, or metrics"}}
 
-User query: stock prediction general overview
+User query: stock prediction geral
 Output:
 {{"has_enough_context":true,"reason":"the user explicitly indicated a broad general direction for the topic"}}
 

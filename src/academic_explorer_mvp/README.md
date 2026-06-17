@@ -129,3 +129,34 @@ nao estiverem corretos, o CLI para com mensagem didatica.
 - Expandir testes de grafo com providers falsos.
 - Avaliar modelos locais menores ou mais rapidos.
 - Explorar criterios de parada mais ricos.
+
+## Test - Benchmark
+
+| Categoria | Query | Resultado esperado |
+|---|---|---|
+| Clara | `violence detection in audio using deep learning` | Buscar direto |
+| Clara | `dengue outbreak prediction using climate variables and machine learning` | Buscar direto |
+| Clara | `stock price prediction using LSTM models` | Buscar direto |
+| Pouca informação | `violence detection` | Pedir clarificação |
+| Pouca informação | `dengue` | Pedir clarificação |
+| Pouca informação | `AI in health` | Pedir clarificação |
+| Mal formulada | `audio violence ai detect` | Normalizar intenção |
+| Mal formulada | `dengue predict weather machine` | Normalizar intenção |
+| Erro de digitação | `violnce detction in audoi` | Corrigir intenção |
+| Erro de digitação | `medcal imag clasification` | Corrigir intenção |
+| Ambígua | `bias detection` | Pedir clarificação |
+| Ambígua | `emotion recognition` | Pedir clarificação |
+| Ampla demais | `machine learning` | Pedir clarificação |
+| Ampla demais | `computer vision` | Pedir clarificação |
+| Específica | `sensor fusion for autonomous vehicle localization using IMU GNSS and Kalman filter` | Buscar direto |
+| Específica | `credit card fraud detection using isolation forest and imbalanced datasets` | Buscar direto |
+| Risco de drift | `AI for shopping` | Clarificar ou filtrar bem |
+| Risco de drift | `audio classification` | Pedir clarificação |
+| Português | `detecção de violência em áudio` | Buscar direto |
+| Português | `previsão de dengue usando clima` | Buscar direto |
+| PT/EN | `stock prediction usando LSTM` | Normalizar intenção |
+| PT/EN | `fake news detection em redes sociais` | Normalizar intenção |
+| Ruim realista | `quero artigos sobre ia` | Pedir clarificação |
+| Ruim realista | `modelo que prevê coisa` | Pedir clarificação |
+| Ranking | `fake news detection using NLP` | Testar ordenação dos melhores papers |
+| Ranking | `medical image classification using CNN` | Testar ranking por relevância |

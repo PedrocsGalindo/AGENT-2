@@ -68,6 +68,9 @@ def route_after_context_initialization(state: SearchState) -> str:
     if stage == "ready_to_search":
         return "plan_filters"
 
+    if stage == "committed":
+        return "plan_filters"
+
     return "enough_context_query"
 
 
@@ -259,15 +262,6 @@ def interpret_query_confirmation(user_message: str) -> str:
 
     positive_answers = {
         "sim",
-        "s",
-        "ok",
-        "pode seguir",
-        "segue",
-        "correto",
-        "isso",
-        "isso mesmo",
-        "ta bom",
-        "t\u00e1 bom",
     }
 
     if text in positive_answers:
