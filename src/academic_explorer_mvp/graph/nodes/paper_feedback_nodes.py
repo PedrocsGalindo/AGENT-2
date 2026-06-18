@@ -14,6 +14,9 @@ from academic_explorer_mvp.graph.nodes.context_nodes import (
 from academic_explorer_mvp.services.query_planner import QueryPlanner
 
 
+REJECTED_PAPERS_PREVIEW_LIMIT = 10
+
+
 def ask_paper_feedback(state: SearchState) -> SearchState:
     """Ask the user whether the ranked papers are going in the right direction."""
 
@@ -144,6 +147,8 @@ def analyze_search_feedback(state: SearchState, planner: QueryPlanner) -> Search
     new_state["excluded_papers"] = []
     new_state["validation_summary"] = None
     new_state["model_validation_summary"] = None
+    new_state["judge_validation_summary"] = None
+    new_state["judge_corrections_count"] = 0
     new_state["validation_counts"] = {}
     new_state["known_paper_ids"] = []
     new_state["last_new_paper_count"] = 0
@@ -187,8 +192,20 @@ def _build_feedback_message(state: SearchState) -> str:
         year = getattr(paper, "year", None) or "ano desconhecido"
         source = getattr(paper, "source", None) or "fonte desconhecida"
         url = getattr(paper, "url", None) or "sem URL"
-        relevance = _relevance_label(_state_text(item.get("relevance")))
-        reason = _state_text(item.get("relevance_reason")) or "Sem justificativa informada."
+        corrected_relevance = _state_text(item.get("corrected_relevance"))
+        relevance = _relevance_label(
+            corrected_relevance or _state_text(item.get("relevance"))
+        )
+        use_judge_reason = bool(item.get("judge_correction_applied")) or (
+            item.get("reason_is_supported") is False
+        )
+        reason = (
+            _state_text(item.get("judge_reason"))
+            if use_judge_reason
+            else _state_text(item.get("relevance_reason"))
+        )
+        reason = reason or _state_text(item.get("relevance_reason"))
+        reason = reason or "Sem justificativa informada."
         useful_for = _state_text(item.get("useful_for"))
         lines.extend(
             [
@@ -202,13 +219,39 @@ def _build_feedback_message(state: SearchState) -> str:
             lines.append(f"   Util para: {useful_for}")
 
     if excluded_papers:
-        lines.extend(["", "Exemplos rejeitados pela validacao:"])
-        for item in excluded_papers[:5]:
+        rejected_preview = excluded_papers[:REJECTED_PAPERS_PREVIEW_LIMIT]
+        lines.extend(
+            [
+                "",
+                "Exemplos rejeitados pela validacao:",
+                (
+                    f"  Mostrando {len(rejected_preview)} de "
+                    f"{len(excluded_papers)} rejeitados."
+                ),
+                "",
+            ]
+        )
+        for item in rejected_preview:
             paper = item.get("paper")
-            if paper is None:
-                continue
-            mismatch = _state_text(item.get("mismatch_reason")) or "fora da intencao da busca"
-            lines.append(f"  - {getattr(paper, 'title', 'titulo desconhecido')}: {mismatch}")
+            title = getattr(paper, "title", "titulo desconhecido")
+            corrected_relevance = _state_text(item.get("corrected_relevance"))
+            relevance = corrected_relevance or _state_text(item.get("relevance")) or "reject"
+            relevance_label = (
+                "Relevancia corrigida" if corrected_relevance else "Relevancia"
+            )
+            reason = (
+                _state_text(item.get("judge_reason"))
+                or _state_text(item.get("mismatch_reason"))
+                or "fora da intencao da busca"
+            )
+            lines.extend(
+                [
+                    f"  - {title}",
+                    f"    {relevance_label}: {_relevance_label(relevance)}",
+                    f"    Motivo: {reason}",
+                    "",
+                ]
+            )
 
     lines.extend(
         [

@@ -88,6 +88,8 @@ def initialize_context(state: SearchState) -> SearchState:
     new_state.setdefault("excluded_papers", [])
     new_state.setdefault("validation_summary", None)
     new_state.setdefault("model_validation_summary", None)
+    new_state.setdefault("judge_validation_summary", None)
+    new_state.setdefault("judge_corrections_count", 0)
     new_state.setdefault("validation_counts", {})
     new_state.setdefault("known_paper_ids", [])
     new_state.setdefault("last_new_paper_count", 0)

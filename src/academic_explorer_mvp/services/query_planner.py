@@ -14,6 +14,7 @@ from academic_explorer_mvp.llm.prompts import (
     build_continue_decision_prompt,
     build_feedback_analysis_prompt,
     build_initial_queries_prompt,
+    build_judge_paper_validations_prompt,
     build_plan_filters_prompt,
     build_refine_queries_prompt,
     build_rewrite_from_user_revision_prompt,
@@ -118,6 +119,28 @@ class PaperValidationResult:
     """Semantic validation result for candidate papers."""
 
     validated_papers: list[PaperValidation]
+    summary: str
+
+
+@dataclass(frozen=True)
+class JudgedPaperValidation:
+    """Independent audit of one paper validation."""
+
+    paper_id: str
+    validation_is_correct: bool
+    reason_is_supported: bool
+    passes_conservative_filters: bool
+    violates_negative_constraints: bool
+    corrected_relevance: str
+    corrected_decision: str
+    judge_reason: str
+
+
+@dataclass(frozen=True)
+class PaperValidationJudgeResult:
+    """Independent audit result for candidate paper validations."""
+
+    judged_validations: list[JudgedPaperValidation]
     summary: str
 
 
@@ -502,6 +525,145 @@ class QueryPlanner:
             summary=self._optional_string(payload, "summary")
             or f"model did not provide a summary for validation batch {batch_index}",
         )
+
+    def judge_paper_validations(
+        self,
+        context: SearchContext,
+        papers: list[Paper],
+        validated_papers: list[dict[str, object]],
+        search_filters: dict[str, object],
+        search_feedback: dict[str, object] | None = None,
+        judge_batch_size: int = 1,
+    ) -> PaperValidationJudgeResult:
+        """Ask the local model to audit paper validations independently."""
+
+        if judge_batch_size < 1:
+            raise ValueError("judge_batch_size must be greater than or equal to 1.")
+
+        validations_by_id = {
+            self._safe_string(item, "paper_id"): item
+            for item in validated_papers
+            if isinstance(item, dict) and self._safe_string(item, "paper_id")
+        }
+        all_judgments: list[JudgedPaperValidation] = []
+        summaries: list[str] = []
+
+        for batch_index, papers_batch in enumerate(
+            _chunked(papers, judge_batch_size),
+            start=1,
+        ):
+            validated_batch = [
+                validations_by_id[paper.id]
+                for paper in papers_batch
+                if paper.id in validations_by_id
+            ]
+            result = self._judge_paper_validations_batch(
+                context=context,
+                papers=papers_batch,
+                validated_papers=validated_batch,
+                search_filters=search_filters,
+                search_feedback=search_feedback or {},
+                batch_index=batch_index,
+            )
+            all_judgments.extend(result.judged_validations)
+            if result.summary:
+                summaries.append(result.summary)
+
+        return PaperValidationJudgeResult(
+            judged_validations=all_judgments,
+            summary=" | ".join(summaries) if summaries else "model did not provide a summary",
+        )
+
+    def _judge_paper_validations_batch(
+        self,
+        context: SearchContext,
+        papers: list[Paper],
+        validated_papers: list[dict[str, object]],
+        search_filters: dict[str, object],
+        search_feedback: dict[str, object],
+        batch_index: int,
+    ) -> PaperValidationJudgeResult:
+        payload = self._expect_dict(
+            "paper validation audit",
+            self._generate_json(
+                "paper validation audit",
+                build_judge_paper_validations_prompt(
+                    context=context,
+                    papers=papers,
+                    validated_papers=validated_papers,
+                    search_filters=search_filters,
+                    search_feedback=search_feedback,
+                ),
+            ),
+        )
+        raw_items = payload.get("judged_validations")
+        if not isinstance(raw_items, list):
+            raise RuntimeError(
+                "Local model returned JSON, but it did not contain the required "
+                "`judged_validations` list for paper validation audit."
+            )
+
+        judgments: list[JudgedPaperValidation] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            paper_id = self._safe_string(raw_item, "paper_id")
+            if not paper_id:
+                continue
+
+            passes_conservative_filters = self._extract_bool(
+                raw_item,
+                "passes_conservative_filters",
+                default=False,
+            )
+            violates_negative_constraints = self._extract_bool(
+                raw_item,
+                "violates_negative_constraints",
+                default=True,
+            )
+            corrected_relevance = self._normalize_relevance(
+                self._safe_string(raw_item, "corrected_relevance")
+            )
+            corrected_decision = self._normalize_decision(
+                self._safe_string(raw_item, "corrected_decision"),
+                corrected_relevance,
+            )
+            if violates_negative_constraints:
+                corrected_relevance = "reject"
+                corrected_decision = "exclude"
+            elif corrected_relevance == "reject":
+                corrected_decision = "exclude"
+
+            judgments.append(
+                JudgedPaperValidation(
+                    paper_id=paper_id,
+                    validation_is_correct=self._extract_bool(
+                        raw_item,
+                        "validation_is_correct",
+                        default=False,
+                    ),
+                    reason_is_supported=self._extract_bool(
+                        raw_item,
+                        "reason_is_supported",
+                        default=False,
+                    ),
+                    passes_conservative_filters=passes_conservative_filters,
+                    violates_negative_constraints=violates_negative_constraints,
+                    corrected_relevance=corrected_relevance,
+                    corrected_decision=corrected_decision,
+                    judge_reason=(
+                        self._safe_string(raw_item, "judge_reason")
+                        or "The judge did not provide a reason."
+                    )[:400],
+                )
+            )
+
+        return PaperValidationJudgeResult(
+            judged_validations=judgments,
+            summary=self._optional_string(payload, "summary")
+            or f"model did not provide a summary for judge batch {batch_index}",
+        )
+
     def should_continue(
         self,
         context: SearchContext,

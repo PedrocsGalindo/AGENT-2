@@ -23,6 +23,7 @@ PLAN_FILTERS_PROMPT_VERSION = "1.1.0"
 REFINE_QUERIES_PROMPT_VERSION = "1.1.0"
 FEEDBACK_ANALYSIS_PROMPT_VERSION = "1.1.0"
 VALIDATE_PAPERS_PROMPT_VERSION = "1.1.0"
+JUDGE_PAPER_VALIDATIONS_PROMPT_VERSION = "1.0.0"
 CONTINUE_DECISION_PROMPT_VERSION = "1.0.1"
 ENRICH_QUERY_PROMPT_VERSION = "1.0.1"
 ASSESS_QUERY_CONTEXT_PROMPT_VERSION = "1.1.1"
@@ -912,79 +913,146 @@ Critical output rule:
 - Do not use title, DOI, URL, index, or generated identifiers as paper_id.
 
 Core validation principle:
-Be strict about relevance.
-A paper can be included only when there is explicit evidence in the title or abstract that it matches the user's intent.
-Do not include a paper because it merely shares a broad word with the query.
+Be evidence-based and calibrated.
+A paper should be included only when the title or abstract supports a real relationship to the user's intent.
+Use high for direct matches, medium for strong partial matches, low for useful background, and reject for wrong-topic papers.
+Do not include a paper because it merely shares a broad or generic word with the query.
 
-Mandatory gates:
-Before assigning high, medium, or low, check all mandatory gates:
+Before validating each paper:
+1. Identify the central topic of the user's search.
+2. Identify the central task, modality, domain, method, or application required by the filters.
+3. Compare the candidate title and abstract against those central requirements.
+4. Decide whether the paper is directly relevant, partially relevant, useful background, or irrelevant.
+
+Mandatory gates for direct relevance:
+Before assigning high or medium, check:
 1. The paper matches the primary_intent when primary_intent is not "none".
 2. The paper satisfies the conservative_filters.
 3. The paper does not violate negative_constraints.
 4. The paper does not depend on assumptions listed in not_inferred.
 5. If the topic is computational, the paper has a clear computational contribution.
 
-If any mandatory gate fails:
-- relevance must be "reject";
-- decision must be "exclude".
+If a paper fails a direct relevance gate:
+- Do not assign high.
+- Assign medium only if the missing part is secondary and the paper is still strongly related.
+- Assign low/include only if the paper is clearly useful background through a related method, modality, data type, or task family.
+- Assign reject/exclude if the paper is wrong topic, wrong domain, wrong modality, wrong task, or only shares generic words.
 
 Conservative vs expansive filter rule:
-- Conservative filters are mandatory central criteria.
+- Conservative filters are central criteria for direct relevance.
 - Expansive filters are only supporting evidence.
 - Do not include a paper only because it matches an expansive filter.
-- Expansive filters can improve relevance only after the paper already satisfies conservative filters.
+- Expansive filters can support low/background relevance when the paper is genuinely related.
+- Expansive filters cannot rescue a paper from a clearly wrong domain, wrong modality, or wrong task.
+- Negative constraints require exclusion when clearly matched.
+
+Generic words do not prove relevance:
+Words such as classification, detection, recognition, prediction, model, models, deep learning, machine learning, artificial intelligence, techniques, methods, trends, survey, review, algorithm, algorithms, framework, system, current, modern, state of the art, and SOTA are generic.
+They only count as evidence when they are clearly connected to the central topic of the user's search.
 
 Evidence rule:
-- relevance_reason must cite concrete evidence from the title or abstract.
+- relevance_reason must be specific to the candidate paper being evaluated.
+- relevance_reason must cite concrete evidence from that candidate's title or abstract.
+- Do not reuse wording from examples.
+- Do not copy the same justification across different papers.
+- Do not use generic phrases such as "matching the user's search intent" unless you also explain what specific title/abstract evidence matches.
+- Do not say "the title explicitly mentions X" unless X or a very close equivalent is actually present in the candidate title.
+- If the title/abstract does not support the reason, set relevance="reject" and decision="exclude", unless the paper is clearly useful background and the reason honestly states that weaker relationship.
 - Use short paraphrases, not long quotes.
 - Do not invent information absent from the title or abstract.
 - If the abstract is missing, judge cautiously using title and metadata.
-- If evidence is weak, reject or use low relevance only when it is clearly useful background.
+- Every included paper must have a relevance_reason that would still make sense if read without seeing the query.
+
+Reason quality requirements:
+Good relevance_reason:
+- names the specific concept from the title or abstract that supports relevance;
+- explains whether the paper is directly relevant or only useful background;
+- does not exaggerate the match.
+
+Bad relevance_reason:
+- says the title mentions a topic that the title does not mention;
+- repeats the same sentence for unrelated papers;
+- relies only on generic terms such as "classification", "deep learning", "model", "techniques", or "survey";
+- claims the paper matches the user's intent without explaining why.
 
 Computer Science guidance:
-A computational contribution may be an algorithm, model, method, system, architecture, pipeline, software, dataset, benchmark, metric, experiment, performance comparison, or technical evaluation.
+A computational contribution may be an algorithm, model, method, system, architecture, pipeline, software, dataset, benchmark, metric, experiment, performance comparison, technical evaluation, survey, or taxonomy.
 Exclude papers that are mainly legal, political, sociological, philosophical, historical, medical, business, conceptual, ethical, or social unless they contain a concrete computational contribution and match the user's intent.
 
 Relevance labels:
 - high: directly related to the revised topic and useful for the user's intent.
-- medium: related and useful, but missing a secondary aspect.
-- low: tangential background; usually exclude unless clearly useful.
+- medium: strongly related and useful, but missing one secondary aspect.
+- low: not directly about the exact topic, but clearly useful as background for methods, concepts, datasets, evaluation, modality, or task family.
 - reject: wrong topic, wrong domain, wrong modality, wrong task, unsupported evidence, or violates constraints.
 
 Decision labels:
 - include: use for high and medium papers.
+- include: use for low only if it is clearly useful background.
 - exclude: use for reject.
-- exclude: use for low unless it is clearly useful background.
 
 Output language:
 - relevance_reason, mismatch_reason, useful_for, summary, and internal reason text must be in English.
 - JSON keys must be in English.
 
 Examples:
+The examples below teach the reasoning pattern only.
+Do not copy their wording.
+Do not copy their topic.
+Always adapt the decision and reason to the current candidate title and abstract.
 
-User search intent: general audio-based violence detection
-Conservative filters: violence detection; audio-based detection
-Candidate title: An Accurate Audio Violence Detection Model Based On One-Dimensional Binary Pattern
+User search intent: explainable AI methods for machine learning models
+Conservative filters: explainable artificial intelligence; machine learning interpretability
+Candidate title: SHAP-Based Explanations for Tree-Based Machine Learning Models
 Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title directly states an audio violence detection model.","mismatch_reason":"","useful_for":"methods"}}
+{{"relevance":"high","decision":"include","relevance_reason":"The title directly addresses SHAP explanations for tree-based machine learning models, which matches explainable AI and interpretability methods.","mismatch_reason":"","useful_for":"methods"}}
 
-User search intent: general audio-based violence detection
-Conservative filters: violence detection; audio-based detection
-Candidate title: Literature Review of Deep-Learning-Based Detection of Violence in Video
+User search intent: explainable AI methods for machine learning models
+Conservative filters: explainable artificial intelligence; machine learning interpretability
+Candidate title: A Survey of Explainable Artificial Intelligence: Concepts, Taxonomies, Opportunities and Challenges
 Expected:
-{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about video-based violence detection, not audio-based detection.","useful_for":"not useful"}}
+{{"relevance":"high","decision":"include","relevance_reason":"The title is a survey on explainable artificial intelligence, which is directly useful for understanding XAI concepts and methods.","mismatch_reason":"","useful_for":"overview and concepts"}}
+
+User search intent: explainable AI methods for machine learning models
+Conservative filters: explainable artificial intelligence; machine learning interpretability
+Candidate title: Improving Accuracy of Convolutional Neural Networks for Plant Disease Classification
+Expected:
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about improving CNN accuracy for plant disease classification, not explainability or interpretability.","useful_for":"not useful"}}
+
+User search intent: explainable AI methods for machine learning models
+Conservative filters: explainable artificial intelligence; machine learning interpretability
+Candidate title: Fairness and Accountability in Automated Decision Systems
+Expected:
+{{"relevance":"low","decision":"include","relevance_reason":"The paper is not directly about explainability methods, but it is related to responsible AI and may provide background context if the search includes broader AI accountability.","mismatch_reason":"It focuses on fairness and accountability rather than concrete XAI methods.","useful_for":"background"}}
+
+User search intent: explainable AI methods for machine learning models
+Conservative filters: explainable artificial intelligence; machine learning interpretability
+Candidate title: Quantum Cryptography for Secure Communication Networks
+Expected:
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about quantum cryptography and secure communication, which does not match explainable AI or machine learning interpretability.","useful_for":"not useful"}}
 
 User search intent: shopping agents using LLMs and VLMs
-Conservative filters: shopping agents; automated shopping
+Conservative filters: shopping agents; LLM or VLM agent; online shopping or purchasing assistance
+Candidate title: Web-Based Autonomous Agents for Product Search and Price Comparison
+Expected:
+{{"relevance":"high","decision":"include","relevance_reason":"The title describes autonomous agents for product search and price comparison, which directly matches shopping or purchasing assistance.","mismatch_reason":"","useful_for":"systems and methods"}}
+
+User search intent: shopping agents using LLMs and VLMs
+Conservative filters: shopping agents; LLM or VLM agent; online shopping or purchasing assistance
 Candidate title: Deep Generative Modelling: A Comparative Review of VAEs, GANs, Normalizing Flows, Energy-Based and Autoregressive Models
 Expected:
-{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about generative modeling generally and does not show evidence of shopping agents or automated shopping.","useful_for":"not useful"}}
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is a general review of generative models and does not show evidence of shopping agents, purchasing assistance, LLM agents, or VLM agents.","useful_for":"not useful"}}
 
 User search intent: bias in medical image classification
 Conservative filters: bias; medical image classification
 Candidate title: Shortcut Learning in Deep Neural Networks for Medical Image Classification
 Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title matches shortcut learning in medical image classification, which is a bias-related problem.","mismatch_reason":"","useful_for":"concepts and methods"}}
+{{"relevance":"high","decision":"include","relevance_reason":"The title connects shortcut learning with medical image classification, which is directly relevant to bias-related model behavior in medical imaging.","mismatch_reason":"","useful_for":"concepts and methods"}}
+
+User search intent: bias in medical image classification
+Conservative filters: bias; medical image classification
+Candidate title: Generalization in Natural Image Classification Benchmarks
+Expected:
+{{"relevance":"low","decision":"include","relevance_reason":"The paper is not about medical image classification, but it may provide background on generalization issues in image classification if the search allows broader bias-related context.","mismatch_reason":"It lacks the medical imaging context required for direct relevance.","useful_for":"background"}}
 
 Required JSON shape:
 {{"validated_papers":[{{"paper_id":"paper id","relevance":"high","decision":"include","relevance_reason":"short evidence-based reason","mismatch_reason":"","useful_for":"how this helps the research"}}],"summary":"short summary of included and rejected paper types"}}
@@ -997,6 +1065,354 @@ Required JSON shape:
         metadata={"output_format": "json", "purpose": "paper_semantic_validation"},
     )
 
+def build_judge_paper_validations_prompt(
+    context: SearchContext,
+    papers: list[Paper],
+    validated_papers: list[dict[str, object]],
+    search_filters: dict[str, object],
+    search_feedback: dict[str, object] | None = None,
+) -> PromptSpec:
+    """Prompt for auditing semantic paper validations."""
+
+    feedback = search_feedback or {}
+    filters = search_filters or {}
+    revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
+    conservative_filters = _feedback_list(filters, "conservative_filters")
+    expansive_filters = _feedback_list(filters, "expansive_filters")
+    negative_constraints = [
+        *_feedback_list(filters, "negative_constraints"),
+        *_feedback_list(feedback, "negative_constraints"),
+    ]
+    primary_intent = _feedback_text(filters, "primary_intent") or revised_topic
+    candidate_count = len(papers)
+
+    text = f"""Return only one JSON object. No markdown. No explanation.
+
+You are an independent AI-as-a-judge auditing paper validations produced by another model.
+The original validation is not trustworthy by default.
+
+User search intent:
+{context.user_query}
+
+Current revised topic:
+{revised_topic}
+
+Search filters:
+Primary intent: {primary_intent}
+Conservative filters: {_format_items(conservative_filters)}
+Expansive filters: {_format_items(expansive_filters)}
+Negative constraints: {_format_items(negative_constraints)}
+
+Candidate papers with the only allowed evidence:
+{_format_candidate_papers_for_judge(papers)}
+
+Original validations to audit:
+{_format_validated_papers_for_judge(validated_papers)}
+
+Task:
+Audit exactly {candidate_count} candidate paper(s), one object per paper_id.
+Check whether each original decision is correct and whether its reason is supported by the title or abstract.
+Correct relevance and decision whenever necessary.
+
+Important:
+Before judging individual papers, internally identify the core requirements of the search.
+Do not output those requirements separately.
+Use them only to audit the original validations.
+
+How to identify core requirements:
+Extract the main required parts from:
+1. the user search intent;
+2. the revised topic;
+3. the primary intent;
+4. the conservative filters;
+5. the expansive filters;
+6. the negative constraints.
+
+The core requirements usually include:
+- the central subject or domain of the search;
+- the central task or problem;
+- the required modality, data type, method, or application, when present;
+- the type of contribution expected, such as method, model, algorithm, system, survey, benchmark, dataset, experiment, or technical evaluation.
+
+Core judging principle:
+Judge the paper, not the previous model's confidence.
+The previous validation may be wrong, exaggerated, copied from examples, or unsupported.
+Your job is to correct it.
+
+Relevance calibration:
+- high: the paper directly satisfies the central topic and the main requirements.
+- medium: the paper is strongly related to the central topic, but misses one secondary detail.
+- low: the paper does not fully match the central topic, but shares a useful methodological, modality, data-type, or task-family connection that may help as background.
+- reject: the paper is from the wrong domain, wrong modality, wrong task, violates negative constraints, or only shares generic words.
+
+Do not be binary:
+A paper that is not directly about the exact target topic should not always be rejected.
+If it is not directly relevant but is methodologically useful and close to the same modality or task family, use corrected_relevance="low" and corrected_decision="include".
+
+Direct inclusion rule:
+Use high or medium only when the paper substantially satisfies the central search intent.
+
+Background inclusion rule:
+A paper may be corrected to corrected_relevance="low" and corrected_decision="include" when:
+- it does not fully match the exact central topic;
+- but it shares the same required modality, data type, or computational task family;
+- and it studies a related method, model, recognition/classification problem, detection problem, or technical approach;
+- and it does not violate a strong negative constraint.
+
+Strict rejection rule:
+Use corrected_relevance="reject" and corrected_decision="exclude" when:
+- the paper uses the wrong modality or wrong domain;
+- the paper is about a clearly unrelated task;
+- the paper violates a negative constraint;
+- the paper only matches generic words;
+- the paper has no clear methodological, modality, or task-family usefulness for the user topic.
+
+Generic words do not prove relevance:
+Words such as classification, detection, recognition, model, models, deep learning, machine learning, artificial intelligence, techniques, methods, trends, survey, review, algorithm, algorithms, current, modern, state of the art, SOTA, system, and framework are generic.
+They only count as evidence when they are clearly connected to the central topic of the search.
+
+Conservative and expansive filters:
+- Conservative filters are strong evidence for direct relevance.
+- A paper that satisfies the conservative filters may be high or medium.
+- A paper that misses one exact conservative filter may still be low/include when it is useful background through the same modality, data type, or task family.
+- Expansive filters are supporting evidence only.
+- Expansive filters can support low/background inclusion, but cannot rescue a paper from a clearly wrong domain or wrong modality.
+- Negative constraints are stronger than expansive filters and usually require exclusion.
+
+Reason audit:
+- Check whether the original relevance_reason is actually supported by the title or abstract.
+- If the original reason says "the title explicitly mentions X", verify the actual title.
+- If X or a clear semantic equivalent is not present in the title, reason_is_supported=false.
+- If the reason claims evidence that is not in the title or abstract, reason_is_supported=false.
+- If the original reason uses the same generic sentence for unrelated papers, reason_is_supported=false.
+- If the original reason says the paper matches the user's intent but only mentions generic words, reason_is_supported=false.
+- If the original reason overstates relevance, do not automatically reject the paper.
+- Instead, correct the relevance level and write a more accurate judge_reason.
+- Do not invent evidence.
+- Use only the supplied title and abstract.
+- If the abstract is absent, use the title cautiously. Reject unless the title clearly supports direct or background relevance.
+
+Invented evidence rule:
+If the original reason claims that a title explicitly mentions a topic, but the actual title does not mention that topic or a close equivalent, the original validation is incorrect.
+In that case:
+- validation_is_correct=false;
+- reason_is_supported=false;
+- corrected_relevance must be lower than the original relevance;
+- corrected_decision must be corrected according to the real evidence.
+
+Repeated reason rule:
+If many papers have the same or nearly the same relevance_reason, audit each one independently.
+Do not accept repeated justifications unless each specific title or abstract truly supports that justification.
+
+For audio-based violence detection topics:
+If the search is about audio-based violence detection:
+- Direct papers about violence detection using audio signals should be high/include.
+- Papers about audio-based danger detection, aggression detection, scream detection, abnormal sound detection, violent event detection, or security-related acoustic event detection may be high or medium depending on evidence.
+- Papers about audio emotion recognition, speech emotion recognition, environmental sound classification, audio event detection, acoustic scene classification, or general audio recognition may be low/include as background methods when audio or speech is central.
+- Papers about video-only violence detection, image-only violence detection, visual surveillance, multimodal violence detection where audio is not central, deepfake detection, text-based hate speech, education, agriculture, robotics, drone detection, or unrelated domains should be reject/exclude.
+
+For audio classification topics:
+If the search is about audio classification, modern audio classification techniques, or SOTA audio classification:
+- audio, sound, speech, acoustic signals, music, voice, environmental sound, or another sonic/audio signal must be central for direct or background inclusion;
+- classification, recognition, categorization, identification, detection, or a closely related audio analysis task should be central;
+- a computational method, model, algorithm, survey, benchmark, dataset, representation, or technical comparison should be connected to the audio task.
+- Reject papers about grape leaf classification, plant disease classification, bacterial classification, generic classification methods without audio, generic deep learning reviews without audio, generic time-series classification without audio, image classification without audio, object detection in images, mixed reality without audio classification, recommendation systems without audio classification, robotics without audio classification, drone detection without audio classification, or education technology without audio classification.
+
+Examples:
+
+Direct positive example:
+User topic: audio-based violence detection
+Paper title: A novel tree pattern-based violence detection model using audio signals
+Original validation: high/include
+Expected audit:
+- validation_is_correct=true
+- reason_is_supported=true
+- passes_conservative_filters=true
+- violates_negative_constraints=false
+- corrected_relevance="high"
+- corrected_decision="include"
+- judge_reason: "The title directly addresses violence detection using audio signals."
+
+Related positive example:
+User topic: audio-based violence detection
+Paper title: Audio signal based danger detection using signal processing and deep learning
+Original validation: high/include
+Expected audit:
+- validation_is_correct=true
+- reason_is_supported=true
+- passes_conservative_filters=true
+- violates_negative_constraints=false
+- corrected_relevance="high"
+- corrected_decision="include"
+- judge_reason: "The title describes danger detection from audio signals using signal processing and deep learning, which is closely aligned with audio-based violence or threat detection."
+
+Background example 1:
+User topic: audio-based violence detection
+Paper title: Supervised machine learning for audio emotion recognition
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=false
+- corrected_relevance="low"
+- corrected_decision="include"
+- judge_reason: "The paper is not about violence detection, but it studies supervised machine learning for audio emotion recognition, which may provide background methods for audio-based recognition."
+
+Background example 2:
+User topic: audio-based violence detection
+Paper title: Clustering-Based Speech Emotion Recognition by Incorporating Learned Features and Deep BiLSTM
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=false
+- corrected_relevance="low"
+- corrected_decision="include"
+- judge_reason: "The paper focuses on speech emotion recognition rather than violence detection, but it uses audio/speech recognition methods that may be useful as background."
+
+Reject example 1:
+User topic: audio-based violence detection
+Paper title: A Survey on the Detection and Impacts of Deepfakes in Visual, Audio, and Textual Formats
+Original validation: high/include
+Original reason: The title explicitly mentions audio-based violence detection.
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=true
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is about deepfake detection across visual, audio, and textual formats, not audio-based violence detection. The original reason invents evidence not present in the title."
+
+Reject example 2:
+User topic: audio-based violence detection
+Paper title: Deepfake Generation and Detection: Case Study and Challenges
+Original validation: high/include
+Original reason: The title directly mentions audio-based violence detection.
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=true
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is about deepfake generation and detection, not audio-based violence detection. The original reason is not supported by the title."
+
+Reject example 3:
+User topic: audio-based violence detection
+Paper title: Advances and Challenges in Drone Detection and Classification Techniques: A State-of-the-Art Review
+Original validation: high/include
+Original reason: The title explicitly mentions audio-based violence detection.
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=true
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is about drone detection and classification, not audio-based violence detection. The original reason invents evidence not present in the title."
+
+Reject example 4:
+User topic: audio-based violence detection
+Paper title: Violence Detection in Videos by Combining 3D Convolutional Neural Networks and Support Vector Machines
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=true
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is about video-based violence detection, not audio-based violence detection."
+
+Reject example 5:
+User topic: modern audio classification techniques
+Paper title: Advancements in deep learning for accurate classification of grape leaves and diagnosis of grape diseases
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=true
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is about grape leaf disease classification, not audio classification."
+
+Reject example 6:
+User topic: modern audio classification techniques
+Paper title: Deep learning modelling techniques: current progress, applications, advantages, and challenges
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=false
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is a generic deep learning review and does not establish audio classification as the central topic."
+
+Reject example 7:
+User topic: modern audio classification techniques
+Paper title: A History of Audio Effects
+Original validation: high/include
+Expected audit:
+- validation_is_correct=false
+- reason_is_supported=true
+- passes_conservative_filters=false
+- violates_negative_constraints=false
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "The paper is audio-related, but it is about audio effects history, not audio classification techniques."
+
+Positive example:
+User topic: modern audio classification techniques
+Paper title: Audio classification using self-supervised learning representations
+Original validation: high/include
+Expected audit:
+- validation_is_correct=true
+- reason_is_supported=true
+- passes_conservative_filters=true
+- violates_negative_constraints=false
+- corrected_relevance="high"
+- corrected_decision="include"
+- judge_reason: "The paper directly addresses audio classification using a modern computational technique."
+
+Mandatory judging rules:
+- Evaluate semantic subject alignment, not isolated keyword overlap.
+- Do not preserve the original decision out of politeness.
+- validation_is_correct is true only when the original relevance and decision are both correct.
+- passes_conservative_filters is true only when the paper satisfies the direct central conservative requirements.
+- passes_conservative_filters may be false for low/include background papers.
+- violates_negative_constraints is true when the paper clearly matches a negative constraint or a wrong-domain interpretation.
+- If violates_negative_constraints=true, corrected_relevance must be "reject" and corrected_decision must be "exclude".
+- judge_reason must be a short, concrete, evidence-based reason in English.
+
+Allowed labels:
+- corrected_relevance: "high", "medium", "low", or "reject"
+- corrected_decision: "include" or "exclude"
+
+Critical output rules:
+- Return exactly {candidate_count} object(s) inside judged_validations.
+- Return one object for every candidate paper and no other papers.
+- paper_id must exactly match the supplied candidate id.
+- All boolean fields must be JSON booleans.
+- Do not add extra keys.
+
+Required JSON shape:
+{{"judged_validations":[{{"paper_id":"paper id","validation_is_correct":true,"reason_is_supported":true,"passes_conservative_filters":true,"violates_negative_constraints":false,"corrected_relevance":"high","corrected_decision":"include","judge_reason":"short reason"}}],"summary":"short summary"}}
+"""
+
+    return PromptSpec(
+        name="judge_paper_validations",
+        version=JUDGE_PAPER_VALIDATIONS_PROMPT_VERSION,
+        text=text,
+        metadata={
+            "output_format": "json",
+            "purpose": "paper_validation_audit",
+        },
+    )
 
 def build_refine_queries_prompt(
     context: SearchContext,
@@ -1280,5 +1696,39 @@ def _format_validated_papers(validated_papers: list[dict[str, object]]) -> str:
             f"{position}. id={paper_id}; title={title}; relevance={relevance}; "
             f"decision={decision}; why_in={relevance_reason or 'none'}; "
             f"why_out={mismatch_reason or 'none'}"
+        )
+    return "\n".join(lines)
+
+
+def _format_validated_papers_for_judge(
+    validated_papers: list[dict[str, object]],
+) -> str:
+    if not validated_papers:
+        return "none"
+
+    lines: list[str] = []
+    for position, item in enumerate(validated_papers, start=1):
+        paper = item.get("paper")
+        paper_id = getattr(paper, "id", item.get("paper_id", "unknown"))
+        lines.append(
+            f"{position}. paper_id={paper_id}; "
+            f"relevance={_feedback_text(item, 'relevance') or 'unknown'}; "
+            f"decision={_feedback_text(item, 'decision') or 'unknown'}; "
+            f"relevance_reason={_feedback_text(item, 'relevance_reason') or 'none'}; "
+            f"mismatch_reason={_feedback_text(item, 'mismatch_reason') or 'none'}; "
+            f"useful_for={_feedback_text(item, 'useful_for') or 'none'}"
+        )
+    return "\n".join(lines)
+
+
+def _format_candidate_papers_for_judge(papers: list[Paper]) -> str:
+    if not papers:
+        return "none"
+
+    lines: list[str] = []
+    for position, paper in enumerate(papers, start=1):
+        abstract = " ".join((paper.abstract or "").split())[:700] or "no abstract"
+        lines.append(
+            f"{position}. paper_id={paper.id}; title={paper.title}; abstract={abstract}"
         )
     return "\n".join(lines)

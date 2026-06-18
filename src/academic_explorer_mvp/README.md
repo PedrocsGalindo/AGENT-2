@@ -31,11 +31,13 @@ src/academic_explorer_mvp/
 
 ```text
 initialize_context
+  -> plan_filters
   -> plan_queries
   -> search_papers
   -> normalize_papers
   -> deduplicate_papers
   -> validate_papers
+  -> judge_paper_validations
   -> decide_next_step
   -> ask_paper_feedback
       -> sim: finalize

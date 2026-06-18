@@ -61,6 +61,10 @@ def build_graph(config: AppConfig):
     graph.add_node("normalize_papers", lambda state: nodes.normalize_papers(state, normalizer))
     graph.add_node("deduplicate_papers", lambda state: nodes.deduplicate_papers(state, deduplicator))
     graph.add_node("validate_papers", lambda state: nodes.validate_papers(state, planner))
+    graph.add_node(
+        "judge_paper_validations",
+        lambda state: nodes.judge_paper_validations(state, planner),
+    )
     graph.add_node("ask_paper_feedback", nodes.ask_paper_feedback)
     graph.add_node("handle_paper_feedback", nodes.handle_paper_feedback)
     graph.add_node("analyze_search_feedback", lambda state: nodes.analyze_search_feedback(state, planner))
@@ -112,7 +116,8 @@ def build_graph(config: AppConfig):
     graph.add_edge("search_papers", "normalize_papers")
     graph.add_edge("normalize_papers", "deduplicate_papers")
     graph.add_edge("deduplicate_papers", "validate_papers")
-    graph.add_edge("validate_papers", "decide_next_step")
+    graph.add_edge("validate_papers", "judge_paper_validations")
+    graph.add_edge("judge_paper_validations", "decide_next_step")
     graph.add_edge("decide_next_step", "ask_paper_feedback")
     graph.add_edge("ask_paper_feedback", "wait_for_user")
     graph.add_conditional_edges(
