@@ -6,7 +6,7 @@ from academic_explorer_mvp.domain.paper import Paper
 
 @dataclass(frozen=True)
 class PromptSpec:
-    """Versioned prompt used by the local model."""
+    """Prompt versionado usado pelo modelo local."""
 
     name: str
     version: str
@@ -33,91 +33,87 @@ REWRITE_FROM_USER_REVISION_PROMPT_VERSION = "1.1.0"
 
 
 def build_assess_query_context_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for deciding whether the query has enough search context."""
+    """Prompt para decidir se a query tem contexto suficiente."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are preparing an academic paper search.
+Você está preparando uma busca de artigos acadêmicos.
 
-Task:
-Decide whether the user's query has enough context to start building useful academic search queries.
+Tarefa:
+Decida se a consulta do usuário tem contexto suficiente para começar a criar queries acadêmicas úteis.
 
-Language rule:
-- The reason must be in English because it is internal.
-- Keep JSON keys in English.
+Regra de idioma:
+- O campo reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
 
-Core decision criterion:
-A query has enough context only when it contains:
-1. a recognizable academic topic; and
-2. enough search intent to avoid guessing the user's desired direction.
+Critério central:
+A consulta precisa conter:
+1. um tema acadêmico reconhecível; e
+2. intenção suficiente para evitar adivinhar a direção desejada.
 
-Searchable is not the same as enough context.
-If a general search can be created, but the desired meaning or direction is ambiguous, context is missing.
+Ser pesquisável não é o mesmo que ter contexto suficiente.
+Se for possível criar uma busca geral, mas o significado ou a direção desejada ainda forem ambíguos, falta contexto.
 
-Use has_enough_context=true when:
-- the user explicitly asks for a general search, overview, introduction, broad learning, trend analysis, review, survey, or state of the art;
-- or the query contains a clear topic plus a specific research focus enough to guide the search, such as method, dataset, data source, metric, comparison, restriction, application, domain, or specific problem. A modality alone is not enough;
-- and academic search queries can be generated without guessing the intended meaning.
+Use has_enough_context=true quando:
+- o usuário pedir explicitamente uma busca geral, visão geral, introdução, tendências, review, survey ou estado da arte;
+- ou houver tema claro e foco suficiente, como método, dataset, fonte de dados, métrica, comparação, restrição, aplicação, domínio ou problema específico;
+- e for possível gerar queries acadêmicas sem assumir o significado pretendido.
 
-Use has_enough_context=false when:
-- the query is broad and the user did not say whether they want a general direction or a specific focus;
-- the query contains an ambiguous term that can lead to substantially different academic searches;
-- the topic could naturally mean different methods, domains, modalities, systems, data sources, or applications;
-- generating queries would require assuming the user's intended meaning.
+Use has_enough_context=false quando:
+- a consulta for ampla e não indicar direção geral nem foco específico;
+- houver termo ambíguo capaz de gerar buscas acadêmicas diferentes;
+- o tema puder significar métodos, domínios, modalidades, sistemas, fontes de dados ou aplicações diferentes;
+- gerar queries exigir assumir a intenção do usuário.
 
-Ambiguity rule:
-If a key term is ambiguous, return has_enough_context=false and state the likely ambiguity in the reason.
-Examples of ambiguous terms include terms such as "agent", "bias", "automation", "shopping automation", "noise", "detection", "security", or "prediction" when the intended meaning is not clear.
+Regra de ambiguidade:
+Se um termo central for ambíguo, retorne has_enough_context=false e explique a ambiguidade em reason.
+Termos como agent, bias, automation, shopping automation, noise, detection, security, prediction e models podem ser ambíguos quando o sentido não estiver claro.
 
-General intent rule:
-If the query explicitly says "general", "overview", "visão geral", "geral", "quero entender", "trend", "trends", "state of the art", "survey", or "review", this is enough context.
-Do not force review/survey as the only possible output later; just recognize that the user wants a broad search.
+Regra de intenção geral:
+Se a consulta disser "general", "overview", "visão geral", "geral", "quero entender", "trend", "trends", "state of the art", "survey" ou "review", considere que há intenção geral suficiente.
+Não force review/survey como único tipo de resultado; apenas reconheça que o usuário deseja busca ampla.
 
-Examples:
+Exemplos:
 
-User query: stock prediction
-Output:
-{{"has_enough_context":false,"reason":"the query is searchable, but it does not specify whether the user wants a general search or a specific focus such as methods, data sources, assets, markets, time horizon, or metrics"}}
+Consulta: stock prediction
+Saída:
+{{"has_enough_context":false,"reason":"A consulta é pesquisável, mas não informa se o usuário quer uma busca geral ou um foco como métodos, fontes de dados, ativos, mercados, horizonte temporal ou métricas."}}
 
-User query: stock prediction geral
-Output:
-{{"has_enough_context":true,"reason":"the user explicitly indicated a broad general direction for the topic"}}
+Consulta: stock prediction geral
+Saída:
+{{"has_enough_context":true,"reason":"O usuário indicou explicitamente uma direção geral e ampla para o tema."}}
 
-User query: stock price prediction using LSTM and news sentiment
-Output:
-{{"has_enough_context":true,"reason":"the query specifies the task, method, and data source"}}
+Consulta: stock price prediction using LSTM and news sentiment
+Saída:
+{{"has_enough_context":true,"reason":"A consulta especifica tarefa, método e fonte de dados."}}
 
-User query: automated shopping
-Output:
-{{"has_enough_context":false,"reason":"the term automated shopping is ambiguous and may refer to shopping agents, e-commerce automation, checkout automation, recommendation systems, or retail operations"}}
+Consulta: automated shopping
+Saída:
+{{"has_enough_context":false,"reason":"O termo automated shopping é ambíguo e pode indicar shopping agents, automação de e-commerce, checkout automático, sistemas de recomendação ou operações de varejo."}}
 
-User query: shopping agents overview
-Output:
-{{"has_enough_context":true,"reason":"the query specifies shopping agents and indicates broad overview intent"}}
+Consulta: audio violence detection
+Saída:
+{{"has_enough_context":false,"reason":"A consulta especifica tarefa e modalidade, mas não indica se o usuário deseja uma direção geral ou um foco como modelos, datasets, características, métricas ou implantação."}}
 
-User query: audio violence detection
-Output:
-{{"has_enough_context":false,"reason":"the query specifies the task and modality, but not whether the user wants a general direction or a specific focus such as models, datasets, features, or deployment"}}
+Consulta: audio violence detection geral
+Saída:
+{{"has_enough_context":true,"reason":"A consulta especifica detecção de violência por áudio e indica intenção geral."}}
 
-User query: audio violence detection geral
-Output:
-{{"has_enough_context":true,"reason":"the query specifies audio violence detection and indicates broad general intent"}}
+Consulta: noisy data in medical image classification
+Saída:
+{{"has_enough_context":false,"reason":"A consulta é relevante, mas noisy data pode significar ruído de rótulo, ruído de imagem, ruído de aquisição, outliers ou robustez."}}
 
-User query: noisy data in medical image classification
-Output:
-{{"has_enough_context":false,"reason":"the query is relevant, but noisy data may refer to label noise, image noise, acquisition noise, outliers, or robustness"}}
+Consulta: label noise in medical image classification
+Saída:
+{{"has_enough_context":true,"reason":"A consulta especifica o tipo de ruído e o domínio de aplicação."}}
 
-User query: label noise in medical image classification
-Output:
-{{"has_enough_context":true,"reason":"the query specifies the type of noise and the application domain"}}
-
-User query:
+Consulta atual:
 {context.user_query}
 
-Required JSON shape:
-{{"has_enough_context":true,"reason":"short reason"}}
-or
-{{"has_enough_context":false,"reason":"short reason"}}
+Formato JSON obrigatório:
+{{"has_enough_context":true,"reason":"justificativa curta em português"}}
+ou
+{{"has_enough_context":false,"reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -129,85 +125,73 @@ or
 
 
 def build_context_question_prompt(user_query: str, reason: str) -> PromptSpec:
-    """Prompt for generating one clarification question with domain-specific options."""
+    """Prompt para gerar uma pergunta de esclarecimento."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are preparing an academic paper search.
+Você está preparando uma busca de artigos acadêmicos.
 
-Task:
-Generate exactly one useful clarification question for the user's current query.
+Tarefa:
+Gere exatamente uma pergunta útil de esclarecimento para a consulta atual do usuário.
 
-Important:
-- Do not reassess whether the query has enough context.
-- The assessment was already done.
-- Ask one question only.
-- The question must help identify the user's intended academic search direction.
+Importante:
+- Não reavalie se a consulta tem contexto suficiente; essa avaliação já foi feita.
+- Faça somente uma pergunta.
+- A pergunta deve ajudar a identificar a direção acadêmica pretendida.
 
-Current user query:
+Consulta atual:
 {user_query}
 
-Reason from previous assessment:
+Justificativa da avaliação anterior:
 {reason}
 
-Language rule:
-- The question must be in Portuguese because it is shown to the user.
-- The reason must be in English because it is internal.
-- Keep JSON keys in English.
+Regra de idioma:
+- question deve ser em português porque será mostrado ao usuário.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
 
-Core rules:
-- Build the question from the actual user query and the missing context in the reason.
-- If the reason indicates ambiguity, explicitly mention the ambiguity and offer likely meanings.
-- If the reason indicates broadness, ask whether the user wants a general direction or a specific focus.
-- Do not copy examples literally.
-- Do not ask generic questions such as "what do you want to know?".
-- Do not add unrelated options.
-- Do not ask about a modality if the modality is already clear; ask about focus instead.
+Regras:
+- Construa a pergunta com base na consulta real e no contexto ausente descrito em reason.
+- Se houver ambiguidade, mencione a ambiguidade e ofereça significados prováveis.
+- Se houver amplitude excessiva, pergunte se o usuário deseja direção geral ou foco específico.
+- Não copie exemplos literalmente.
+- Não faça perguntas genéricas como "o que você quer saber?".
+- Não adicione opções não relacionadas.
+- Não pergunte sobre uma modalidade se ela já estiver clara; pergunte sobre o foco.
 
-Useful dimensions when relevant:
-- general direction, method, model family, application, domain, modality, dataset, data source, metric, comparison, population, disease, task, system type, deployment context, evaluation focus, theoretical vs practical focus.
+Dimensões úteis quando relevantes:
+direção geral, método, família de modelos, aplicação, domínio, modalidade, dataset, fonte de dados, métrica, comparação, população, doença, tarefa, tipo de sistema, implantação, avaliação ou foco teórico/prático.
 
-Good question patterns:
-- "O termo [term] pode significar [meaning 1], [meaning 2] ou [meaning 3]. Qual sentido você quer priorizar?"
-- "Você quer uma visão geral sobre [topic] ou quer focar em algo mais específico, como [option 1], [option 2], [option 3] ou [option 4]?"
-- "Em [topic], o foco deve ser [option 1], [option 2], [option 3], [option 4] ou uma visão geral?"
+Nunca pergunte:
+- Qual aspecto específico você precisa?
+- Pode fornecer mais contexto?
+- O que você quer saber?
+- Esclareça sua consulta.
+- Pode ser mais específico?
 
-Bad questions. Never ask:
-- What specific aspect do you need?
-- Can you provide more context?
-- What do you want to know?
-- Please clarify your query.
-- Could you be more specific?
+Orientação por tipo de tema:
+- Para prediction/forecasting: métodos, fontes de dados, variável-alvo, horizonte temporal, mercado/domínio, métricas ou direção geral.
+- Para detection/classification: modalidade, tipo de dado, datasets, modelos, extração de características, tempo real, benchmarks, métricas ou direção geral.
+- Para agents: diferencie LLM/VLM agents, software agents, sistemas autônomos, recommendation agents, shopping agents, robótica ou workflows.
+- Para bias: diferencie viés estatístico, viés de dataset, shortcut bias, fairness bias, viés de modelo, viés médico, viés social ou viés de avaliação.
+- Para noise: diferencie label noise, input noise, ruído de aquisição, outliers, ambientes ruidosos ou robustez.
 
-Topic guidance:
-- For prediction/forecasting: methods, data sources, target variable, time horizon, market/domain, metrics, or general direction.
-- For detection/classification: modality, data type, datasets, models, feature extraction, real-time deployment, benchmarks, metrics, or general direction.
-- For ambiguous technical terms: list the likely meanings and ask the user to choose.
-- For agents: distinguish LLM/VLM agents, software agents, autonomous systems, recommendation agents, shopping agents, robotics, or workflows when relevant.
-- For bias: distinguish statistical bias, dataset bias, shortcut bias, fairness bias, model bias, medical bias, social bias, or evaluation bias when relevant.
-- For noise: distinguish label noise, input noise, acquisition noise, outliers, noisy environments, or robustness.
+Exemplos:
 
-Examples:
+Consulta: automated shopping
+Saída:
+{{"question":"O termo \"automated shopping\" ficou ambíguo: você quer falar de agentes de compra com IA, automação em e-commerce, checkout automático, sistemas de recomendação ou operações de varejo?","reason":"A pergunta expõe a ambiguidade e oferece interpretações acadêmicas prováveis."}}
 
-User query: automated shopping
-Reason: the term automated shopping is ambiguous and may refer to shopping agents, e-commerce automation, checkout automation, recommendation systems, or retail operations
-Output:
-{{"question":"O termo \"automated shopping\" ficou ambíguo: você quer falar de agentes de compra com IA, automação em e-commerce, checkout automático, sistemas de recomendação ou operações de varejo?","reason":"the question exposes the ambiguity and offers likely academic interpretations"}}
+Consulta: audio violence detection
+Saída:
+{{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em algo mais específico, como modelos, datasets, extração de características, métricas ou detecção em tempo real?","reason":"A pergunta preserva a modalidade de áudio e solicita o foco de pesquisa que ainda está ausente."}}
 
-User query: audio violence detection
-Reason: the query specifies the task and modality, but not whether the user wants a general direction or a specific focus
-Output:
-{{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em algo mais específico, como modelos, datasets, extração de características, métricas ou detecção em tempo real?","reason":"the question preserves the audio modality and asks about the missing research focus"}}
+Consulta: noisy data in medical image classification
+Saída:
+{{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, outliers, robustez do modelo ou uma visão geral?","reason":"A pergunta diferencia os sentidos técnicos possíveis de dados ruidosos no tema do usuário."}}
 
-User query: noisy data in medical image classification
-Reason: noisy data may refer to labels, images, acquisition, outliers, or robustness
-Output:
-{{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, outliers, robustez do modelo ou uma visão geral?","reason":"the question asks about the specific meaning of noisy data in the user's topic"}}
-
-Now generate the final answer for the current user query only.
-
-Required JSON shape:
-{{"question":"one clarification question with topic-specific options","reason":"short reason"}}
+Formato JSON obrigatório:
+{{"question":"uma pergunta de esclarecimento com opções específicas do tema","reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -224,110 +208,82 @@ def build_rewrite_user_query_prompt(
     question_reason: str,
     user_answer: str,
 ) -> PromptSpec:
-    """Prompt for proposing one refined user topic after clarification."""
+    """Prompt para propor um tema refinado após esclarecimento."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are preparing an academic paper search.
+Você está preparando uma busca de artigos acadêmicos.
 
-Task:
-Create one clearer academic search topic from the initial query and the user's clarification answer.
+Tarefa:
+Crie um único tema acadêmico mais claro combinando a consulta inicial, a pergunta de esclarecimento e a resposta do usuário.
+Esta saída não é uma lista de queries; é um tema refinado que será usado no planejamento e na validação semântica.
 
-This output is not a list of search queries.
-It is one refined user topic that will later be passed to query planning and semantic validation.
+Regra de idioma:
+- proposed_query deve permanecer em inglês porque será usada na busca acadêmica.
+- message deve ser em português porque será mostrado ao usuário.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
 
-Input language:
-The initial query, clarification question, and user answer may be in Portuguese, English, or mixed language.
+Regras centrais:
+- Crie exatamente um tema acadêmico refinado.
+- Preserve o tema principal e os termos técnicos úteis da consulta inicial.
+- Use a pergunta apenas para interpretar a resposta do usuário.
+- Traduza o significado pretendido para inglês em proposed_query.
+- Use somente informações fornecidas pelo usuário.
+- Não invente métodos, datasets, métricas, domínios, aplicações, modalidades ou restrições.
+- Não crie múltiplas queries.
+- Não deixe o tema mais específico do que a resposta permite.
+- Se a resposta adicionar um foco, inclua esse foco.
+- Se a resposta for geral, mantenha o tema amplo.
+- Se o usuário selecionar uma opção, inclua somente essa opção.
+- Se o usuário rejeitar uma opção, não a inclua.
 
-Output language:
-- proposed_query must be in English because it will be used for academic paper search.
-- message must be in Portuguese because it is shown to the user.
-- reason must be in English because it is internal.
-- JSON keys must stay in English.
+Resposta geral:
+Se o usuário disser "geral", "visão geral", "quero entender", "panorama", "algo amplo", "não sei ainda" ou equivalente:
+- mantenha o tema amplo;
+- não transforme automaticamente em review, survey ou systematic review;
+- não adicione método, dataset, métrica ou restrição específica.
 
-Main goal:
-Combine the initial query with the user's clarification answer.
-Use only information actually provided by the user.
-Do not invent methods, datasets, metrics, domains, applications, modalities, or restrictions.
+Review/survey:
+Use "review", "survey", "systematic review", "literature review" ou "state of the art" em proposed_query somente se o usuário pedir explicitamente.
+Uma resposta geral não significa pedido exclusivo por artigos de revisão.
 
-Core rules:
-- Create exactly one refined academic topic.
-- Preserve the main topic from the initial query.
-- Preserve useful technical terms from the initial query.
-- Use the clarification question only to understand what the user's answer refers to.
-- Translate the intended meaning into English for proposed_query.
-- The proposed_query should be direct and faithful.
-- The proposed_query does not need to be very short, but it must not become verbose.
-- Include as much user-provided context as useful for academic search.
-- Do not create multiple search queries.
-- Do not include inferred restrictions as separate fields.
-- Do not make the topic more specific than the user's answer allows.
-- If the user's answer adds a specific focus, include that focus.
-- If the user's answer is broad or general, keep the refined topic broad.
-- If the user selects one option from the question, include only that selected option.
-- If the user rejects an option, do not include it.
+Exemplos:
 
-General answer rule:
-If the user says something equivalent to "geral", "visão geral", "quero entender", "panorama", "algo amplo", "não sei ainda", or "general":
-- keep the topic broad;
-- do not automatically turn the refined topic into review, survey, or systematic review;
-- use terms such as "general" or "broad" only when they help preserve the user's meaning;
-- do not add a specific method, dataset, metric, or restriction.
+Consulta inicial: audio violence detection
+Resposta: geral
+Saída:
+{{"proposed_query":"general audio-based violence detection","message":"Com base na sua resposta, a busca ficaria: general audio-based violence detection","reason":"O usuário pediu uma direção ampla, preservando o tema de detecção de violência baseada em áudio."}}
 
-Review/survey distinction:
-Only use "review", "survey", "systematic review", or "state of the art" in proposed_query if the user explicitly asks for review, survey, systematic review, literature review, or state of the art.
-A general answer is not the same as asking only for review papers.
+Consulta inicial: audio violence detection
+Resposta: revisão sistemática
+Saída:
+{{"proposed_query":"systematic review of audio-based violence detection","message":"Com base na sua resposta, a busca ficaria: systematic review of audio-based violence detection","reason":"O usuário pediu explicitamente uma revisão sistemática."}}
 
-Negative rules:
-- Do not add "deep learning" unless the user mentioned it or the topic clearly requires it.
-- Do not add "machine learning" unless the user mentioned it or the topic clearly involves computational modeling.
-- Do not add a dataset unless the user mentioned it.
-- Do not add evaluation metrics unless the user mentioned evaluation or metrics.
-- Do not add a modality unless it appears in the initial query, clarification question, or user answer.
-- Do not add an application domain unless it appears in the initial query or user answer.
-- Do not transform a broad answer into a narrow method.
-- Do not transform a domain answer into a method answer.
+Consulta inicial: automated shopping
+Resposta: agentes de compra com LLM e VLM
+Saída:
+{{"proposed_query":"shopping agents using LLMs and VLMs","message":"Com base na sua resposta, a busca ficaria: shopping agents using LLMs and VLMs","reason":"O usuário esclareceu que automated shopping significa agentes de compra com LLMs e VLMs."}}
 
-Examples:
+Consulta inicial: shortcut bias
+Resposta: imagens médicas
+Saída:
+{{"proposed_query":"shortcut bias in medical imaging","message":"Com base na sua resposta, a busca ficaria: shortcut bias in medical imaging","reason":"O usuário selecionou medical imaging como contexto de aplicação."}}
 
-Initial query: audio violence detection
-Clarification question: Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em modelos, datasets, extração de características, métricas ou detecção em tempo real?
-User answer: geral
-Output:
-{{"proposed_query":"general audio-based violence detection","message":"Com base na sua resposta, a busca ficaria: general audio-based violence detection","reason":"the user asked for a broad direction while preserving the audio-based violence detection topic"}}
-
-Initial query: audio violence detection
-Clarification question: Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em modelos, datasets, extração de características, métricas ou detecção em tempo real?
-User answer: revisão sistemática
-Output:
-{{"proposed_query":"systematic review of audio-based violence detection","message":"Com base na sua resposta, a busca ficaria: systematic review of audio-based violence detection","reason":"the user explicitly asked for a systematic review"}}
-
-Initial query: automated shopping
-Clarification question: O termo "automated shopping" ficou ambíguo: você quer falar de agentes de compra com IA, automação em e-commerce, checkout automático, sistemas de recomendação ou operações de varejo?
-User answer: agentes de compra com LLM e VLM
-Output:
-{{"proposed_query":"shopping agents using LLMs and VLMs","message":"Com base na sua resposta, a busca ficaria: shopping agents using LLMs and VLMs","reason":"the user clarified that automated shopping means AI shopping agents using LLMs and VLMs"}}
-
-Initial query: shortcut bias
-Clarification question: Você quer uma visão geral sobre shortcut bias ou quer focar em visão computacional, NLP, imagens médicas, viés de dataset, correlações espúrias ou robustez?
-User answer: imagens médicas
-Output:
-{{"proposed_query":"shortcut bias in medical imaging","message":"Com base na sua resposta, a busca ficaria: shortcut bias in medical imaging","reason":"the user selected medical imaging as the application context"}}
-
-Initial query:
+Consulta inicial:
 {initial_query}
 
-Clarification question:
+Pergunta de esclarecimento:
 {question}
 
-Why the question matters:
+Justificativa da pergunta:
 {question_reason}
 
-User answer:
+Resposta do usuário:
 {user_answer}
 
-Required JSON shape:
-{{"proposed_query":"clear academic search topic","message":"Com base na sua resposta, a busca ficaria: ...","reason":"short reason"}}
+Formato JSON obrigatório:
+{{"proposed_query":"tema acadêmico claro em inglês","message":"Com base na sua resposta, a busca ficaria: ...","reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -346,32 +302,32 @@ def build_rewrite_from_user_revision_prompt(
     clarification_answer: str,
     user_revision: str,
 ) -> PromptSpec:
-    """Prompt for refining a user-written revision of the proposed topic."""
+    """Prompt para refinar a revisão escrita pelo usuário."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-Create one clear academic search topic from the user's revision.
+Crie um único tema acadêmico claro a partir da revisão escrita pelo usuário.
 
-Rules:
-- Prefer the revision written by the user.
-- Preserve useful context from the initial query and clarification only when it is compatible with the revision.
-- Do not invent methods, datasets, domains, restrictions, or modalities.
-- Do not create multiple queries.
-- The proposed_query must be in English because it will be used for academic paper search.
-- The message must be in Portuguese because it is shown to the user.
-- The reason must be in English because it is internal.
-- Keep JSON keys in English.
-- The proposed_query should be direct, faithful, and not verbose.
+Regras:
+- Priorize a revisão escrita pelo usuário.
+- Preserve contexto útil da consulta inicial e do esclarecimento somente quando for compatível com a revisão.
+- Não invente métodos, datasets, domínios, restrições ou modalidades.
+- Não crie múltiplas queries.
+- proposed_query deve permanecer em inglês porque será usada na busca acadêmica.
+- message deve ser em português porque será mostrado ao usuário.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
+- proposed_query deve ser direta, fiel e não excessivamente longa.
 
-Initial query: {initial_query}
-Previous proposed query: {proposed_query}
-Clarification question: {clarification_question}
-Clarification reason: {clarification_reason}
-Clarification answer: {clarification_answer}
-User revision: {user_revision}
+Consulta inicial: {initial_query}
+Tema proposto anteriormente: {proposed_query}
+Pergunta de esclarecimento: {clarification_question}
+Justificativa do esclarecimento: {clarification_reason}
+Resposta ao esclarecimento: {clarification_answer}
+Revisão do usuário: {user_revision}
 
-Required JSON shape:
-{{"proposed_query":"clear academic search topic","message":"Com base na sua revisão, a busca ficaria: ...","reason":"short reason"}}
+Formato JSON obrigatório:
+{{"proposed_query":"tema acadêmico claro em inglês","message":"Com base na sua revisão, a busca ficaria: ...","reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -383,123 +339,81 @@ Required JSON shape:
 
 
 def build_initial_queries_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for initial exploratory search queries."""
+    """Prompt para planejar as queries iniciais."""
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are planning the first round of academic paper search queries.
+Você está planejando a primeira rodada de queries para busca de artigos acadêmicos.
 
-User topic:
+Tema do usuário:
 {context.user_query}
 
-Minimum year:
+Ano mínimo:
 {context.min_year}
 
-Task:
-Create exactly 3 academic search queries for finding candidate papers.
+Tarefa:
+Crie exatamente 3 queries acadêmicas para encontrar artigos candidatos.
+O tema já foi avaliado ou refinado. Não faça perguntas e não reavalie o contexto.
 
-The user topic was already assessed or refined before reaching this step.
-Do not ask questions here.
-Do not reassess whether the topic has enough context.
+Filosofia de busca:
+Priorize recall, pois uma etapa posterior fará validação semântica.
+A busca deve ser ampla o suficiente para descobrir artigos úteis, mas fiel ao tema.
 
-Search philosophy:
-Favor recall over precision because a later semantic validation step will filter irrelevant papers.
-The search should be broad enough to discover useful papers, but still faithful to the user's topic.
+Planejamento interno:
+1. Identifique a intenção principal.
+2. Identifique os núcleos obrigatórios que devem aparecer em todas as queries, exatamente ou por sinônimos acadêmicos próximos.
+3. Identifique termos técnicos opcionais.
+4. Identifique sinônimos acadêmicos prováveis.
+5. Identifique termos que causariam desvio de tema.
 
-Core goal:
-Generate 3 meaningfully different search queries.
-Do not produce three queries that only swap one word.
-Do not drift into unrelated modalities, methods, domains, or applications.
+Núcleos obrigatórios:
+- Geralmente são a tarefa, objeto, modalidade, domínio ou problema sem os quais a query deixa de representar o tema.
+- Exemplo: audio violence detection exige violence detection e audio/sound/acoustic.
+- Exemplo: bias in medical image classification exige bias e medical image classification/medical imaging classification.
+- Exemplo: shopping agents exige shopping/automated shopping e agents/assistants.
 
-Internal planning steps:
-1. Identify the main research intent.
-2. Identify core anchors: terms or concepts that must remain in every query, using exact terms or close synonyms.
-3. Identify optional technical terms: useful terms that may appear in some queries but not all.
-4. Identify likely academic synonyms.
-5. Identify terms that would cause topic drift.
+Termos opcionais:
+Podem aparecer em algumas queries, não necessariamente em todas.
+Exemplos: LLM, VLM, RAG, LSTM, transformer, benchmark, dataset, state of the art, trends, survey.
 
-Core anchors:
-- Core anchors must appear in every query, either exactly or as close academic synonyms.
-- A core anchor is usually the main task, object, modality, domain, or problem without which the query stops representing the user topic.
-- Examples:
-  - audio violence detection: core anchors are violence detection and audio/sound/acoustic.
-  - bias in medical image classification: core anchors are bias and medical image classification/medical imaging classification.
-  - shopping agents: core anchors are shopping/automated shopping and agents/assistants.
+Quando o tema indicar "general", "geral", "visão geral", "overview", "broad" ou "panorama":
+- mantenha a busca ampla;
+- exatamente uma query pode incluir "state of the art", "trends", "overview", "survey" ou "review";
+- não use esses termos em todas as queries, salvo pedido explícito.
 
-Optional technical terms:
-- Optional technical terms should appear in some queries, not necessarily all.
-- Examples: LLM, VLM, RAG, LSTM, transformer, benchmark, dataset, state of the art, trend, survey.
-- Use optional terms according to their importance in the topic.
+Estrutura:
+- Query 1: formulação acadêmica mais fiel.
+- Query 2: sinônimo ou formulação acadêmica equivalente.
+- Query 3: ângulo exploratório mais amplo, mas ainda fiel.
 
-General-topic behavior:
-If the user topic indicates "general", "geral", "visão geral", "overview", "broad", "panorama", or similar:
-- keep the search broad;
-- exactly one query may include a term such as "state of the art", "trends", "overview", "survey", or "review" when useful;
-- do not put review/survey/state-of-the-art terms in all queries unless the user explicitly asked only for reviews or surveys.
+Regras:
+- O array queries deve conter exatamente 3 strings não vazias.
+- As queries acadêmicas devem obrigatoriamente permanecer em inglês.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
+- Toda query deve preservar a intenção principal.
+- Não invente datasets, métricas, anos, restrições ou aplicações estreitas.
+- Não adicione método ou modalidade que não estejam no tema.
+- Não amplie um tema específico para um campo genérico não relacionado.
+- Não restrinja um tema amplo a um único método.
+- Não copie exemplos sem verificar se servem ao tema atual.
 
-Query structure:
-- Query 1: closest faithful academic query.
-- Query 2: synonym or equivalent academic wording.
-- Query 3: broader exploratory angle, such as trends, state of the art, systems, applications, or related terminology, only when faithful.
+Exemplos:
 
-Rules:
-- Return only the final JSON object.
-- The queries array must contain exactly 3 non-empty strings.
-- Academic search queries must be in English.
-- The reason must be in English because it is internal.
-- Every query must preserve the user's main intent.
-- Keep queries direct and searchable.
-- Do not invent datasets, metrics, years, restrictions, or narrow applications.
-- Do not add a specific method unless the user mentioned it or it is central to the topic.
-- Do not add a modality unless the user mentioned it or it is part of the topic.
-- Do not broaden a specific topic into an unrelated generic field.
-- Do not narrow a broad topic into one specific method.
-- Do not copy examples unless they fit the current topic.
+Tema: general audio-based violence detection
+Saída:
+{{"queries":["audio-based violence detection","acoustic violent event detection","state of the art sound-based violence detection"],"reason":"As queries preservam os núcleos de áudio e detecção de violência, variando termos acadêmicos próximos e usando uma formulação mais ampla para exploração geral."}}
 
-Examples:
+Tema: shopping agents using LLMs and VLMs
+Saída:
+{{"queries":["AI shopping agents","LLM agents for online shopping","VLM shopping assistants in e-commerce"],"reason":"As queries preservam shopping agents e distribuem LLM e VLM como termos técnicos importantes sem tornar todas as formulações idênticas."}}
 
-User topic: general audio-based violence detection
-Output:
-{{"queries":[
-  "audio-based violence detection",
-  "acoustic violent event detection",
-  "state of the art sound-based violence detection"
-],"reason":"the queries preserve violence detection and audio-related anchors while using one broader state-of-the-art query for general exploration"}}
+Tema: bias in medical image classification
+Saída:
+{{"queries":["bias in medical image classification","dataset bias in medical imaging classification","shortcut learning in medical image classification"],"reason":"As queries preservam bias e medical image classification, explorando terminologia próxima sobre viés."}}
 
-User topic: shopping agents using LLMs and VLMs
-Output:
-{{"queries":[
-  "AI shopping agents",
-  "LLM agents for online shopping",
-  "VLM shopping assistants in e-commerce"
-],"reason":"the queries preserve shopping agents while using LLM and VLM as important but not universal optional terms"}}
-
-User topic: bias in medical image classification
-Output:
-{{"queries":[
-  "bias in medical image classification",
-  "dataset bias in medical imaging classification",
-  "shortcut learning in medical image classification"
-],"reason":"the queries preserve the bias and medical image classification anchors while exploring related bias terminology"}}
-
-User topic: stock price prediction using LSTM and news sentiment
-Output:
-{{"queries":[
-  "stock price prediction using LSTM and news sentiment",
-  "stock market forecasting with recurrent neural networks and sentiment analysis",
-  "financial time series prediction using news sentiment"
-],"reason":"the queries preserve the stock prediction task while varying method and data-source wording"}}
-
-User topic: label noise in medical image classification
-Output:
-{{"queries":[
-  "label noise in medical image classification",
-  "medical image classification with noisy labels",
-  "robust learning under label noise in medical imaging"
-],"reason":"the queries preserve label noise and medical image classification while exploring robust-learning terminology"}}
-
-Required JSON shape:
-{{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"short reason"}}
+Formato JSON obrigatório:
+{{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -511,35 +425,34 @@ Required JSON shape:
 
 
 def build_plan_filters_prompt(context: SearchContext) -> PromptSpec:
-    """Prompt for planning semantic validation filters."""
+    """Prompt para planejar filtros semânticos."""
 
-    text = f"""Return only one valid JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON válido. Sem markdown. Sem explicações fora do JSON.
 
-You are planning semantic filters for academic paper validation.
+Você está planejando filtros semânticos para validação de artigos acadêmicos.
 
-Refined user topic:
+Tema refinado do usuário:
 {context.user_query}
 
-Task:
-Create compact semantic validation filters from the refined user topic.
+Tarefa:
+Crie filtros semânticos compactos a partir do tema refinado.
+Esses filtros serão usados para decidir se artigos candidatos correspondem à intenção acadêmica.
 
-These filters will later be used to decide whether candidate papers match the user's academic intent.
+Importante:
+- Não gere queries de busca.
+- Não valide artigos nesta etapa.
+- Não invente um novo tema.
+- Não renomeie chaves JSON.
+- Inclua todas as chaves obrigatórias e não adicione chaves extras.
+- Todos os campos, exceto primary_intent e reason, devem ser listas.
+- Se uma lista não tiver valores, retorne [].
 
-Important:
-- Do not generate search queries.
-- Do not validate papers here.
-- Do not invent a new topic.
-- Do not rename JSON keys.
-- Always include all required keys.
-- All fields except primary_intent and reason must be lists.
-- If a list field has no values, return an empty list.
-- Do not add extra keys.
+Regra de idioma:
+- Mantenha as chaves JSON em inglês.
+- Valores técnicos podem preservar termos acadêmicos em inglês quando isso aumentar a precisão.
+- reason deve ser em português para facilitar depuração.
 
-Language rule:
-- All JSON values must be in English.
-- JSON keys must be in English.
-
-Official JSON schema:
+Schema JSON oficial:
 {{
   "primary_intent": "string",
   "conservative_filters": ["string"],
@@ -550,255 +463,80 @@ Official JSON schema:
   "reason": "string"
 }}
 
-Field meaning:
-- primary_intent: the central academic intent of the user topic.
-- conservative_filters: central criteria that a relevant paper should satisfy.
-- expansive_filters: related concepts that may help identify useful papers, but are not mandatory by themselves.
-- negative_constraints: concepts, domains, tasks, or interpretations that indicate mismatch.
-- not_inferred: things the model must not assume because the user did not provide them.
-- validation_priority: ordered criteria for validating candidate papers.
-- reason: one short reason explaining the filters.
+Significado:
+- primary_intent: intenção acadêmica central.
+- conservative_filters: critérios centrais para relevância direta.
+- expansive_filters: conceitos próximos que ajudam, mas não bastam sozinhos.
+- negative_constraints: conceitos, domínios, tarefas ou interpretações que indicam incompatibilidade.
+- not_inferred: elementos que não podem ser presumidos.
+- validation_priority: ordem dos critérios de validação.
+- reason: justificativa curta em português.
 
-Core filtering principle:
-A paper must first satisfy the conservative_filters.
-Expansive filters are only supporting evidence.
-Do not include a paper only because it matches an expansive filter.
-Do not accept a paper only because it shares one isolated word with the topic.
+Princípio central:
+O artigo deve primeiro satisfazer os conservative_filters para relevância direta.
+Expansive_filters são apenas evidência de apoio.
+Não aceite artigo apenas por compartilhar uma palavra isolada.
 
-Conservative filter rules:
-- Use only the core task, object, system, modality, domain, or method that is explicit or strongly implied.
-- Keep conservative_filters narrow and central.
-- Do not put generic terms such as "AI", "machine learning", "automation", "market analysis", "customer experience", or "data analytics" as conservative filters unless they are truly central to the user's topic.
-- If a term is broad, pair it with the user's actual object or task.
-  Example: use "shopping agent", not just "agent".
-  Example: use "automated shopping", not just "automation".
-  Example: use "audio-based violence detection", not just "audio".
+Filtros conservadores:
+- Use somente tarefa, objeto, sistema, modalidade, domínio ou método central explícito ou fortemente implícito.
+- Mantenha-os estreitos e centrais.
+- Não use termos genéricos isolados como AI, machine learning, automation ou data analytics.
+- Combine termos amplos com o objeto real: "shopping agent", não apenas "agent"; "audio-based violence detection", não apenas "audio".
 
-Expansive filter rules:
-- Use expansive_filters for related concepts that can help recall.
-- Expansive filters must still be close to the user's topic.
-- Do not add business, marketing, logistics, or social concepts unless the user asked for them.
-- Do not add specific implementation details unless they are natural and useful for the topic.
+Filtros expansivos:
+- Use conceitos próximos para melhorar recall.
+- Não adicione negócios, marketing, logística ou conceitos sociais sem solicitação.
+- Não invente detalhes de implementação.
 
-Negative constraint rules:
-- Add likely confusions caused by ambiguous words.
-- Add nearby topics that would produce irrelevant papers.
-- Add domains that share terms but do not match the user's intent.
-- If the topic contains "agent", exclude unrelated uses such as principal-agent economics, generic agent-based modeling, central banks as agents, or social agents unless the user asks for them.
-- If the topic is about shopping agents, exclude warehouse automation, supply chain, inventory optimization, generic customer experience, purchase intention, brand engagement, advertising, and retail strategy when they do not involve a shopping/purchasing agent.
+Restrições negativas:
+- Inclua confusões prováveis causadas por termos ambíguos.
+- Inclua tópicos próximos que produziriam artigos irrelevantes.
+- Inclua domínios que compartilham palavras, mas não correspondem à intenção.
 
-Not inferred rules:
-Use not_inferred for tempting but unsupported assumptions.
-Examples:
-- specific dataset
-- specific model architecture
-- specific platform
-- user study
-- web scraping
-- API integration
-- real-time deployment
-- mobile app
-- recommender system
-Only put something in not_inferred if it would be tempting to assume but was not stated.
+not_inferred:
+Use para suposições tentadoras, mas não fornecidas, como dataset, arquitetura, plataforma, estudo de usuário, web scraping, API, implantação em tempo real, aplicativo ou recommender system.
 
-Computer Science relevance:
-If the topic is computational, prefer papers with clear computational contributions, such as algorithms, models, agents, systems, datasets, benchmarks, experiments, architectures, pipelines, software, automation workflows, or technical evaluation.
-Do not force "machine learning" or "deep learning" unless the user topic supports it.
+Relevância em Ciência da Computação:
+Para temas computacionais, prefira contribuições como algoritmos, modelos, agentes, sistemas, datasets, benchmarks, experimentos, arquiteturas, pipelines, software ou avaliação técnica.
+Não force machine learning ou deep learning sem apoio no tema.
 
-Validation logic:
-The validation_priority should tell the validator what to check first.
-The first priority must be the core user intent.
-Later priorities should check supporting concepts and exclusions.
+Limites:
+- conservative_filters: máximo 4 itens.
+- expansive_filters: máximo 8 itens.
+- negative_constraints: máximo 10 itens.
+- not_inferred: máximo 8 itens.
+- validation_priority: máximo 5 itens.
+- reason: uma frase curta em português.
 
-Length limits:
-- conservative_filters: max 4 items.
-- expansive_filters: max 8 items.
-- negative_constraints: max 10 items.
-- not_inferred: max 8 items.
-- validation_priority: max 5 items.
-- reason: one short sentence.
+Exemplos:
 
-Examples:
-
-Topic: automatic shopping agent
-Output:
-{{
-  "primary_intent": "academic search about automatic shopping agents",
-  "conservative_filters": [
-    "shopping agent",
-    "automated shopping",
-    "product search or purchase assistance"
-  ],
-  "expansive_filters": [
-    "AI shopping assistant",
-    "autonomous purchasing assistant",
-    "product comparison",
-    "price comparison",
-    "deal finding",
-    "web-based product search",
-    "LLM agent for shopping",
-    "browser agent for online shopping"
-  ],
-  "negative_constraints": [
-    "inventory optimization",
-    "warehouse automation",
-    "supply chain management",
-    "order fulfillment without shopping agent",
-    "customer experience without shopping agent",
-    "purchase intention without automated agent",
-    "brand engagement",
-    "advertising strategy",
-    "principal-agent economics",
-    "generic autonomous agents without shopping context"
-  ],
-  "not_inferred": [
-    "specific platform",
-    "specific dataset",
-    "specific model architecture",
-    "web scraping",
-    "API integration",
-    "VLM agent",
-    "recommendation system",
-    "checkout automation"
-  ],
-  "validation_priority": [
-    "match shopping agent or automated shopping intent",
-    "check product search or purchase assistance role",
-    "check computational agent or system contribution",
-    "apply negative constraints",
-    "use expansive filters only as supporting evidence"
-  ],
-  "reason": "The topic is about an automated agent that helps with shopping or purchasing, not general retail analytics or logistics."
-}}
-
-Topic: shopping agents using LLMs and VLMs
-Output:
-{{
-  "primary_intent": "academic search about shopping agents using LLMs or VLMs",
-  "conservative_filters": [
-    "shopping agent",
-    "LLM or VLM agent",
-    "online shopping or purchasing assistance"
-  ],
-  "expansive_filters": [
-    "AI shopping assistant",
-    "multimodal shopping assistant",
-    "product search agent",
-    "product comparison",
-    "price comparison",
-    "web automation for shopping",
-    "browser agent",
-    "recommendation agent"
-  ],
-  "negative_constraints": [
-    "generic LLM agents without shopping context",
-    "generic VLM papers without shopping context",
-    "warehouse automation",
-    "inventory optimization",
-    "supply chain management",
-    "customer experience without agent system",
-    "virtual reality shopping without agents",
-    "principal-agent economics"
-  ],
-  "not_inferred": [
-    "specific dataset",
-    "specific benchmark",
-    "specific e-commerce platform",
-    "web scraping",
-    "API integration",
-    "checkout automation"
-  ],
-  "validation_priority": [
-    "match shopping agent intent",
-    "match LLM or VLM agent aspect",
-    "check shopping or purchasing context",
-    "check computational contribution",
-    "apply negative constraints"
-  ],
-  "reason": "The topic requires both shopping-agent context and LLM/VLM-based agent technology."
-}}
-
-Topic: general audio-based violence detection
-Output:
+Tema: general audio-based violence detection
+Saída:
 {{
   "primary_intent": "general search about audio-based violence detection",
-  "conservative_filters": [
-    "violence detection",
-    "audio-based detection"
-  ],
-  "expansive_filters": [
-    "sound-based violent event detection",
-    "acoustic event detection",
-    "audio signal processing",
-    "audio classification",
-    "aggression detection"
-  ],
-  "negative_constraints": [
-    "video-only violence detection",
-    "image-only violence detection",
-    "visual surveillance",
-    "audio-visual violence detection",
-    "multimodal violence detection",
-    "hate speech detection",
-    "deepfake detection",
-    "non-computational violence studies"
-  ],
-  "not_inferred": [
-    "specific dataset",
-    "specific model architecture",
-    "real-time deployment",
-    "multimodal learning"
-  ],
-  "validation_priority": [
-    "match violence detection task",
-    "match audio modality",
-    "check computational contribution",
-    "apply negative constraints",
-    "use expansive filters only as supporting evidence"
-  ],
-  "reason": "The user wants a general search about violence detection based on audio, without assuming a specific method or dataset."
+  "conservative_filters": ["violence detection", "audio-based detection"],
+  "expansive_filters": ["sound-based violent event detection", "acoustic event detection", "audio signal processing", "audio classification", "aggression detection"],
+  "negative_constraints": ["video-only violence detection", "image-only violence detection", "visual surveillance", "audio-visual violence detection", "multimodal violence detection", "hate speech detection", "deepfake detection", "non-computational violence studies"],
+  "not_inferred": ["specific dataset", "specific model architecture", "real-time deployment", "multimodal learning"],
+  "validation_priority": ["match violence detection task", "match audio modality", "check computational contribution", "apply negative constraints", "use expansive filters only as supporting evidence"],
+  "reason": "O tema exige detecção de violência baseada em áudio, sem presumir método ou dataset específico."
 }}
 
-Topic: bias in medical image classification
-Output:
+Tema: shopping agents using LLMs and VLMs
+Saída:
 {{
-  "primary_intent": "general search about bias in medical image classification",
-  "conservative_filters": [
-    "bias",
-    "medical image classification"
-  ],
-  "expansive_filters": [
-    "dataset bias",
-    "shortcut learning",
-    "spurious correlations",
-    "medical imaging",
-    "robustness",
-    "model generalization"
-  ],
-  "negative_constraints": [
-    "natural image classification without medical context",
-    "medical imaging without classification",
-    "fairness discussion without computational evaluation",
-    "clinical bias without machine learning or classification"
-  ],
-  "not_inferred": [
-    "specific disease",
-    "specific imaging modality",
-    "specific model architecture",
-    "specific dataset"
-  ],
-  "validation_priority": [
-    "match bias-related problem",
-    "match medical image classification",
-    "check computational contribution",
-    "apply negative constraints"
-  ],
-  "reason": "The topic requires bias and medical image classification, while related robustness concepts are useful but not mandatory."
+  "primary_intent": "academic search about shopping agents using LLMs or VLMs",
+  "conservative_filters": ["shopping agent", "LLM or VLM agent", "online shopping or purchasing assistance"],
+  "expansive_filters": ["AI shopping assistant", "multimodal shopping assistant", "product search agent", "product comparison", "price comparison", "web automation for shopping", "browser agent"],
+  "negative_constraints": ["generic LLM agents without shopping context", "generic VLM papers without shopping context", "warehouse automation", "inventory optimization", "supply chain management", "principal-agent economics"],
+  "not_inferred": ["specific dataset", "specific benchmark", "specific e-commerce platform", "web scraping", "API integration", "checkout automation"],
+  "validation_priority": ["match shopping agent intent", "match LLM or VLM agent aspect", "check shopping or purchasing context", "check computational contribution", "apply negative constraints"],
+  "reason": "O tema exige contexto de shopping agent e uso de LLM ou VLM."
 }}
 
-Now return the JSON object for the current refined user topic.
+Agora retorne o objeto JSON para o tema refinado atual.
 
-Required JSON shape:
+Formato JSON obrigatório:
 {{
   "primary_intent": "string",
   "conservative_filters": ["string"],
@@ -806,7 +544,7 @@ Required JSON shape:
   "negative_constraints": ["string"],
   "not_inferred": ["string"],
   "validation_priority": ["string"],
-  "reason": "string"
+  "reason": "justificativa curta em português"
 }}
 """
 
@@ -814,10 +552,7 @@ Required JSON shape:
         name="plan_filters",
         version=PLAN_FILTERS_PROMPT_VERSION,
         text=text,
-        metadata={
-            "output_format": "json",
-            "purpose": "semantic_filter_planning",
-        },
+        metadata={"output_format": "json", "purpose": "semantic_filter_planning"},
     )
 
 
@@ -827,7 +562,7 @@ def build_validate_papers_prompt(
     search_feedback: dict[str, object] | None = None,
     search_filters: dict[str, object] | None = None,
 ) -> PromptSpec:
-    """Prompt for semantic validation of candidate papers."""
+    """Prompt para validação semântica de artigos candidatos."""
 
     feedback = search_feedback or {}
     filters = search_filters or {}
@@ -835,9 +570,9 @@ def build_validate_papers_prompt(
     revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
     positive_constraints = _feedback_list(feedback, "positive_constraints")
     feedback_negative_constraints = _feedback_list(feedback, "negative_constraints")
-    query_strategy = _feedback_text(feedback, "query_strategy") or "none"
+    query_strategy = _feedback_text(feedback, "query_strategy") or "nenhuma"
 
-    primary_intent = _feedback_text(filters, "primary_intent") or "none"
+    primary_intent = _feedback_text(filters, "primary_intent") or "nenhuma"
     conservative_filters = _feedback_list(filters, "conservative_filters")
     expansive_filters = _feedback_list(filters, "expansive_filters")
     negative_constraints = [
@@ -847,7 +582,7 @@ def build_validate_papers_prompt(
     not_inferred = _feedback_list(filters, "not_inferred")
     validation_priority = _feedback_list(filters, "validation_priority")
 
-    # Backward-compatible fallback if older filter parser still returns the previous schema.
+    # Fallback compatível com versões antigas do schema de filtros.
     if not conservative_filters:
         conservative_filters = [
             *_feedback_list(filters, "required_concepts"),
@@ -866,196 +601,124 @@ def build_validate_papers_prompt(
 
     paper_block = _format_candidate_papers(papers)
     candidate_count = len(papers)
-    candidate_label = "candidate paper" if candidate_count == 1 else "candidate papers"
+    candidate_label = "artigo candidato" if candidate_count == 1 else "artigos candidatos"
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are validating the current batch of academic search results semantically.
+Você está validando semanticamente o lote atual de resultados acadêmicos.
+O lote contém exatamente {candidate_count} {candidate_label}.
 
-The current batch contains exactly {candidate_count} {candidate_label}.
-
-User search intent:
+Intenção de busca do usuário:
 {context.user_query}
 
-Current revised topic:
+Tema revisado atual:
 {revised_topic}
 
-Feedback positive constraints:
+Restrições positivas do feedback:
 {_format_items(positive_constraints)}
 
-Feedback negative constraints:
+Restrições negativas do feedback:
 {_format_items(feedback_negative_constraints)}
 
-Query strategy:
+Estratégia de busca:
 {query_strategy}
 
-Planned semantic filters:
-Primary intent: {primary_intent}
-Conservative filters: {_format_items(conservative_filters)}
-Expansive filters: {_format_items(expansive_filters)}
-Negative constraints: {_format_items(negative_constraints)}
-Not inferred: {_format_items(not_inferred)}
-Validation priority: {_format_items(validation_priority)}
+Filtros semânticos planejados:
+Intenção principal: {primary_intent}
+Filtros conservadores: {_format_items(conservative_filters)}
+Filtros expansivos: {_format_items(expansive_filters)}
+Restrições negativas: {_format_items(negative_constraints)}
+Não inferir: {_format_items(not_inferred)}
+Prioridade de validação: {_format_items(validation_priority)}
 
-Current candidate batch:
+Lote atual:
 {paper_block}
 
-Task:
-Validate only the {candidate_count} {candidate_label} in the current candidate batch.
-For each candidate, decide whether it is relevant to the user's search intent.
+Tarefa:
+Valide somente os {candidate_count} artigos deste lote.
+Para cada candidato, decida sua relevância para a intenção do usuário.
 
-Critical output rule:
-- Return exactly {candidate_count} validation object(s) inside validated_papers.
-- Return exactly one validation object for each candidate in the current batch.
-- Do not skip any candidate.
-- Do not add papers that are not in the current candidate batch.
-- The paper_id must exactly match the candidate paper id.
-- Do not use title, DOI, URL, index, or generated identifiers as paper_id.
+Regra crítica de saída:
+- Retorne exatamente {candidate_count} objetos dentro de validated_papers.
+- Retorne um objeto para cada candidato, sem omitir ou adicionar artigos.
+- paper_id deve corresponder exatamente ao id fornecido.
+- Não use título, DOI, URL, índice ou identificador inventado como paper_id.
 
-Core validation principle:
-Be evidence-based and calibrated.
-A paper should be included only when the title or abstract supports a real relationship to the user's intent.
-Use high for direct matches, medium for strong partial matches, low for useful background, and reject for wrong-topic papers.
-Do not include a paper because it merely shares a broad or generic word with the query.
+Princípio central:
+Seja baseado em evidência e calibrado.
+Inclua um artigo somente quando título ou abstract sustentarem uma relação real com a intenção.
+Use high para correspondência direta, medium para correspondência parcial forte, low para base útil e reject para tema incorreto.
+Palavras genéricas isoladas não provam relevância.
 
-Before validating each paper:
-1. Identify the central topic of the user's search.
-2. Identify the central task, modality, domain, method, or application required by the filters.
-3. Compare the candidate title and abstract against those central requirements.
-4. Decide whether the paper is directly relevant, partially relevant, useful background, or irrelevant.
+Antes de validar cada artigo:
+1. Identifique o tema central da busca.
+2. Identifique tarefa, modalidade, domínio, método ou aplicação exigidos.
+3. Compare título e abstract com esses requisitos.
+4. Classifique como diretamente relevante, parcialmente relevante, base útil ou irrelevante.
 
-Mandatory gates for direct relevance:
-Before assigning high or medium, check:
-1. The paper matches the primary_intent when primary_intent is not "none".
-2. The paper satisfies the conservative_filters.
-3. The paper does not violate negative_constraints.
-4. The paper does not depend on assumptions listed in not_inferred.
-5. If the topic is computational, the paper has a clear computational contribution.
+Gates para relevância direta:
+Antes de high ou medium, verifique:
+1. correspondência com primary_intent;
+2. atendimento aos conservative_filters;
+3. ausência de violação de negative_constraints;
+4. ausência de suposições de not_inferred;
+5. contribuição computacional clara, quando o tema for computacional.
 
-If a paper fails a direct relevance gate:
-- Do not assign high.
-- Assign medium only if the missing part is secondary and the paper is still strongly related.
-- Assign low/include only if the paper is clearly useful background through a related method, modality, data type, or task family.
-- Assign reject/exclude if the paper is wrong topic, wrong domain, wrong modality, wrong task, or only shares generic words.
+Se falhar em um gate:
+- não atribua high;
+- use medium somente se faltar um aspecto secundário;
+- use low/include somente se houver base claramente útil por método, modalidade, tipo de dado ou família de tarefas relacionada;
+- use reject/exclude para tema, domínio, modalidade ou tarefa incorretos, ou mera coincidência de palavras genéricas.
 
-Conservative vs expansive filter rule:
-- Conservative filters are central criteria for direct relevance.
-- Expansive filters are only supporting evidence.
-- Do not include a paper only because it matches an expansive filter.
-- Expansive filters can support low/background relevance when the paper is genuinely related.
-- Expansive filters cannot rescue a paper from a clearly wrong domain, wrong modality, or wrong task.
-- Negative constraints require exclusion when clearly matched.
+Filtros:
+- Conservative filters definem relevância direta.
+- Expansive filters são apoio e podem sustentar low/background quando houver relação genuína.
+- Expansive filters não resgatam domínio, modalidade ou tarefa claramente incorretos.
+- Negative constraints exigem exclusão quando claramente presentes.
 
-Generic words do not prove relevance:
-Words such as classification, detection, recognition, prediction, model, models, deep learning, machine learning, artificial intelligence, techniques, methods, trends, survey, review, algorithm, algorithms, framework, system, current, modern, state of the art, and SOTA are generic.
-They only count as evidence when they are clearly connected to the central topic of the user's search.
+Calibração de importância:
+- Use a escala completa.
+- high: artigo provavelmente central para o tema.
+- medium: artigo claramente útil e relacionado, mas não perfeito.
+- low: artigo útil como base, método, conceito, dataset, avaliação, modalidade ou família de tarefas próxima.
+- reject: artigo de tema, domínio, modalidade ou tarefa incorretos, ou apenas com palavras genéricas.
 
-Evidence rule:
-- relevance_reason must be specific to the candidate paper being evaluated.
-- relevance_reason must cite concrete evidence from that candidate's title or abstract.
-- Do not reuse wording from examples.
-- Do not copy the same justification across different papers.
-- Do not use generic phrases such as "matching the user's search intent" unless you also explain what specific title/abstract evidence matches.
-- Do not say "the title explicitly mentions X" unless X or a very close equivalent is actually present in the candidate title.
-- If the title/abstract does not support the reason, set relevance="reject" and decision="exclude", unless the paper is clearly useful background and the reason honestly states that weaker relationship.
-- Use short paraphrases, not long quotes.
-- Do not invent information absent from the title or abstract.
-- If the abstract is missing, judge cautiously using title and metadata.
-- Every included paper must have a relevance_reason that would still make sense if read without seeing the query.
+Regra de evidência:
+- relevance_reason deve ser específica para o candidato.
+- Cite evidência concreta do título ou abstract por paráfrase curta.
+- Não reutilize justificativas entre artigos diferentes.
+- Não diga que o título menciona X se X ou equivalente próximo não estiver no título.
+- Não invente informações.
+- Se o abstract estiver ausente, julgue com cautela pelo título e metadados.
+- Todo artigo incluído deve ter relevance_reason compreensível e honesta.
 
-Reason quality requirements:
-Good relevance_reason:
-- names the specific concept from the title or abstract that supports relevance;
-- explains whether the paper is directly relevant or only useful background;
-- does not exaggerate the match.
+Regra de idioma:
+- relevance_reason, mismatch_reason, useful_for, summary e textos de justificativa devem ser em português para facilitar depuração.
+- Mantenha as chaves JSON e os rótulos high, medium, low, reject, include e exclude em inglês.
 
-Bad relevance_reason:
-- says the title mentions a topic that the title does not mention;
-- repeats the same sentence for unrelated papers;
-- relies only on generic terms such as "classification", "deep learning", "model", "techniques", or "survey";
-- claims the paper matches the user's intent without explaining why.
+Exemplos:
+Os exemplos ensinam o padrão de raciocínio. Não copie o texto deles; adapte ao título e abstract do candidato atual.
 
-Computer Science guidance:
-A computational contribution may be an algorithm, model, method, system, architecture, pipeline, software, dataset, benchmark, metric, experiment, performance comparison, technical evaluation, survey, or taxonomy.
-Exclude papers that are mainly legal, political, sociological, philosophical, historical, medical, business, conceptual, ethical, or social unless they contain a concrete computational contribution and match the user's intent.
+Exemplo direto:
+Intenção: explainable AI methods for machine learning models
+Título: SHAP-Based Explanations for Tree-Based Machine Learning Models
+Saída:
+{{"relevance":"high","decision":"include","relevance_reason":"O título aborda explicações SHAP para modelos de machine learning baseados em árvores, correspondendo diretamente a métodos de explicabilidade.","mismatch_reason":"","useful_for":"métodos"}}
 
-Relevance labels:
-- high: directly related to the revised topic and useful for the user's intent.
-- medium: strongly related and useful, but missing one secondary aspect.
-- low: not directly about the exact topic, but clearly useful as background for methods, concepts, datasets, evaluation, modality, or task family.
-- reject: wrong topic, wrong domain, wrong modality, wrong task, unsupported evidence, or violates constraints.
+Exemplo de base:
+Intenção: bias in medical image classification
+Título: Generalization in Natural Image Classification Benchmarks
+Saída:
+{{"relevance":"low","decision":"include","relevance_reason":"O artigo não trata de imagens médicas, mas pode oferecer base sobre generalização em classificação de imagens.","mismatch_reason":"Não contém o contexto de medical imaging exigido para relevância direta.","useful_for":"base conceitual"}}
 
-Decision labels:
-- include: use for high and medium papers.
-- include: use for low only if it is clearly useful background.
-- exclude: use for reject.
+Exemplo de rejeição:
+Intenção: shopping agents using LLMs and VLMs
+Título: Deep Generative Modelling: A Comparative Review
+Saída:
+{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"O artigo revisa modelos generativos de forma geral e não apresenta evidência de shopping agents ou assistência de compra.","useful_for":"não útil"}}
 
-Output language:
-- relevance_reason, mismatch_reason, useful_for, summary, and internal reason text must be in English.
-- JSON keys must be in English.
-
-Examples:
-The examples below teach the reasoning pattern only.
-Do not copy their wording.
-Do not copy their topic.
-Always adapt the decision and reason to the current candidate title and abstract.
-
-User search intent: explainable AI methods for machine learning models
-Conservative filters: explainable artificial intelligence; machine learning interpretability
-Candidate title: SHAP-Based Explanations for Tree-Based Machine Learning Models
-Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title directly addresses SHAP explanations for tree-based machine learning models, which matches explainable AI and interpretability methods.","mismatch_reason":"","useful_for":"methods"}}
-
-User search intent: explainable AI methods for machine learning models
-Conservative filters: explainable artificial intelligence; machine learning interpretability
-Candidate title: A Survey of Explainable Artificial Intelligence: Concepts, Taxonomies, Opportunities and Challenges
-Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title is a survey on explainable artificial intelligence, which is directly useful for understanding XAI concepts and methods.","mismatch_reason":"","useful_for":"overview and concepts"}}
-
-User search intent: explainable AI methods for machine learning models
-Conservative filters: explainable artificial intelligence; machine learning interpretability
-Candidate title: Improving Accuracy of Convolutional Neural Networks for Plant Disease Classification
-Expected:
-{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about improving CNN accuracy for plant disease classification, not explainability or interpretability.","useful_for":"not useful"}}
-
-User search intent: explainable AI methods for machine learning models
-Conservative filters: explainable artificial intelligence; machine learning interpretability
-Candidate title: Fairness and Accountability in Automated Decision Systems
-Expected:
-{{"relevance":"low","decision":"include","relevance_reason":"The paper is not directly about explainability methods, but it is related to responsible AI and may provide background context if the search includes broader AI accountability.","mismatch_reason":"It focuses on fairness and accountability rather than concrete XAI methods.","useful_for":"background"}}
-
-User search intent: explainable AI methods for machine learning models
-Conservative filters: explainable artificial intelligence; machine learning interpretability
-Candidate title: Quantum Cryptography for Secure Communication Networks
-Expected:
-{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is about quantum cryptography and secure communication, which does not match explainable AI or machine learning interpretability.","useful_for":"not useful"}}
-
-User search intent: shopping agents using LLMs and VLMs
-Conservative filters: shopping agents; LLM or VLM agent; online shopping or purchasing assistance
-Candidate title: Web-Based Autonomous Agents for Product Search and Price Comparison
-Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title describes autonomous agents for product search and price comparison, which directly matches shopping or purchasing assistance.","mismatch_reason":"","useful_for":"systems and methods"}}
-
-User search intent: shopping agents using LLMs and VLMs
-Conservative filters: shopping agents; LLM or VLM agent; online shopping or purchasing assistance
-Candidate title: Deep Generative Modelling: A Comparative Review of VAEs, GANs, Normalizing Flows, Energy-Based and Autoregressive Models
-Expected:
-{{"relevance":"reject","decision":"exclude","relevance_reason":"","mismatch_reason":"The paper is a general review of generative models and does not show evidence of shopping agents, purchasing assistance, LLM agents, or VLM agents.","useful_for":"not useful"}}
-
-User search intent: bias in medical image classification
-Conservative filters: bias; medical image classification
-Candidate title: Shortcut Learning in Deep Neural Networks for Medical Image Classification
-Expected:
-{{"relevance":"high","decision":"include","relevance_reason":"The title connects shortcut learning with medical image classification, which is directly relevant to bias-related model behavior in medical imaging.","mismatch_reason":"","useful_for":"concepts and methods"}}
-
-User search intent: bias in medical image classification
-Conservative filters: bias; medical image classification
-Candidate title: Generalization in Natural Image Classification Benchmarks
-Expected:
-{{"relevance":"low","decision":"include","relevance_reason":"The paper is not about medical image classification, but it may provide background on generalization issues in image classification if the search allows broader bias-related context.","mismatch_reason":"It lacks the medical imaging context required for direct relevance.","useful_for":"background"}}
-
-Required JSON shape:
-{{"validated_papers":[{{"paper_id":"paper id","relevance":"high","decision":"include","relevance_reason":"short evidence-based reason","mismatch_reason":"","useful_for":"how this helps the research"}}],"summary":"short summary of included and rejected paper types"}}
+Formato JSON obrigatório:
+{{"validated_papers":[{{"paper_id":"paper id","relevance":"high","decision":"include","relevance_reason":"justificativa curta baseada em evidência","mismatch_reason":"","useful_for":"como ajuda a pesquisa"}}],"summary":"resumo curto dos tipos de artigos incluídos e rejeitados"}}
 """
 
     return PromptSpec(
@@ -1065,6 +728,7 @@ Required JSON shape:
         metadata={"output_format": "json", "purpose": "paper_semantic_validation"},
     )
 
+
 def build_judge_paper_validations_prompt(
     context: SearchContext,
     papers: list[Paper],
@@ -1072,7 +736,7 @@ def build_judge_paper_validations_prompt(
     search_filters: dict[str, object],
     search_feedback: dict[str, object] | None = None,
 ) -> PromptSpec:
-    """Prompt for auditing semantic paper validations."""
+    """Prompt para auditar validações semânticas de artigos."""
 
     feedback = search_feedback or {}
     filters = search_filters or {}
@@ -1086,333 +750,188 @@ def build_judge_paper_validations_prompt(
     primary_intent = _feedback_text(filters, "primary_intent") or revised_topic
     candidate_count = len(papers)
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are an independent AI-as-a-judge auditing paper validations produced by another model.
-The original validation is not trustworthy by default.
+Você é um AI-as-a-judge independente auditando validações de artigos produzidas por outro modelo.
+A validação original não é confiável por padrão.
 
-User search intent:
+Intenção de busca:
 {context.user_query}
 
-Current revised topic:
+Tema revisado atual:
 {revised_topic}
 
-Search filters:
-Primary intent: {primary_intent}
-Conservative filters: {_format_items(conservative_filters)}
-Expansive filters: {_format_items(expansive_filters)}
-Negative constraints: {_format_items(negative_constraints)}
+Filtros:
+Intenção principal: {primary_intent}
+Filtros conservadores: {_format_items(conservative_filters)}
+Filtros expansivos: {_format_items(expansive_filters)}
+Restrições negativas: {_format_items(negative_constraints)}
 
-Candidate papers with the only allowed evidence:
+Artigos candidatos; use somente estas evidências:
 {_format_candidate_papers_for_judge(papers)}
 
-Original validations to audit:
+Validações originais:
 {_format_validated_papers_for_judge(validated_papers)}
 
-Task:
-Audit exactly {candidate_count} candidate paper(s), one object per paper_id.
-Check whether each original decision is correct and whether its reason is supported by the title or abstract.
-Correct relevance and decision whenever necessary.
+Tarefa:
+Audite exatamente {candidate_count} artigos, um objeto por paper_id.
+Verifique se decisão e justificativa originais são sustentadas pelo título ou abstract.
+Corrija relevância e decisão quando necessário.
 
-Important:
-Before judging individual papers, internally identify the core requirements of the search.
-Do not output those requirements separately.
-Use them only to audit the original validations.
+Antes de julgar cada artigo, identifique internamente:
+1. assunto ou domínio central;
+2. tarefa ou problema central;
+3. modalidade, tipo de dado, método ou aplicação exigidos;
+4. contribuição esperada, como método, modelo, algoritmo, sistema, survey, benchmark, dataset, experimento ou avaliação.
+Não retorne esses requisitos separadamente.
 
-How to identify core requirements:
-Extract the main required parts from:
-1. the user search intent;
-2. the revised topic;
-3. the primary intent;
-4. the conservative filters;
-5. the expansive filters;
-6. the negative constraints.
+Princípio:
+Julgue o artigo, não a confiança do modelo anterior.
+A validação original pode estar errada, exagerada, copiada ou sem sustentação.
 
-The core requirements usually include:
-- the central subject or domain of the search;
-- the central task or problem;
-- the required modality, data type, method, or application, when present;
-- the type of contribution expected, such as method, model, algorithm, system, survey, benchmark, dataset, experiment, or technical evaluation.
+Calibração de importância:
+- Use a escala completa.
+- high: artigo provavelmente central para o tema.
+- medium: artigo claramente útil e relacionado, mas não perfeito.
+- low: artigo útil como base, método, conceito, dataset, avaliação, modalidade ou família de tarefas próxima.
+- reject: artigo de tema, domínio, modalidade ou tarefa incorretos, ou apenas com palavras genéricas.
 
-Core judging principle:
-Judge the paper, not the previous model's confidence.
-The previous validation may be wrong, exaggerated, copied from examples, or unsupported.
-Your job is to correct it.
+Rejeição:
+Use reject/exclude quando:
+- modalidade ou domínio estiverem errados;
+- a tarefa for claramente não relacionada;
+- houver violação de restrição negativa;
+- houver somente palavras genéricas;
+- não houver utilidade metodológica, de modalidade ou de família de tarefas.
 
-Relevance calibration:
-- high: the paper directly satisfies the central topic and the main requirements.
-- medium: the paper is strongly related to the central topic, but misses one secondary detail.
-- low: the paper does not fully match the central topic, but shares a useful methodological, modality, data-type, or task-family connection that may help as background.
-- reject: the paper is from the wrong domain, wrong modality, wrong task, violates negative constraints, or only shares generic words.
+Filtros:
+- Conservative filters são evidência forte para relevância direta.
+- passes_conservative_filters pode ser false para artigos low/include usados como base.
+- Expansive filters apenas apoiam a decisão.
+- Expansive filters não resgatam domínio ou modalidade claramente incorretos.
+- Negative constraints são mais fortes e normalmente exigem exclusão.
 
-Do not be binary:
-A paper that is not directly about the exact target topic should not always be rejected.
-If it is not directly relevant but is methodologically useful and close to the same modality or task family, use corrected_relevance="low" and corrected_decision="include".
+Auditoria da justificativa:
+- Confira se relevance_reason é sustentada pelo título ou abstract.
+- Se disser "o título menciona X", confirme que X ou equivalente realmente aparece.
+- Se inventar evidência, use reason_is_supported=false.
+- Se repetir frase genérica para artigos diferentes, audite cada artigo independentemente.
+- Se exagerar a relevância, não rejeite automaticamente; reduza a relevância e escreva judge_reason mais precisa.
+- Não invente evidência.
+- Se não houver abstract, use o título com cautela.
 
-Direct inclusion rule:
-Use high or medium only when the paper substantially satisfies the central search intent.
-
-Background inclusion rule:
-A paper may be corrected to corrected_relevance="low" and corrected_decision="include" when:
-- it does not fully match the exact central topic;
-- but it shares the same required modality, data type, or computational task family;
-- and it studies a related method, model, recognition/classification problem, detection problem, or technical approach;
-- and it does not violate a strong negative constraint.
-
-Strict rejection rule:
-Use corrected_relevance="reject" and corrected_decision="exclude" when:
-- the paper uses the wrong modality or wrong domain;
-- the paper is about a clearly unrelated task;
-- the paper violates a negative constraint;
-- the paper only matches generic words;
-- the paper has no clear methodological, modality, or task-family usefulness for the user topic.
-
-Generic words do not prove relevance:
-Words such as classification, detection, recognition, model, models, deep learning, machine learning, artificial intelligence, techniques, methods, trends, survey, review, algorithm, algorithms, current, modern, state of the art, SOTA, system, and framework are generic.
-They only count as evidence when they are clearly connected to the central topic of the search.
-
-Conservative and expansive filters:
-- Conservative filters are strong evidence for direct relevance.
-- A paper that satisfies the conservative filters may be high or medium.
-- A paper that misses one exact conservative filter may still be low/include when it is useful background through the same modality, data type, or task family.
-- Expansive filters are supporting evidence only.
-- Expansive filters can support low/background inclusion, but cannot rescue a paper from a clearly wrong domain or wrong modality.
-- Negative constraints are stronger than expansive filters and usually require exclusion.
-
-Reason audit:
-- Check whether the original relevance_reason is actually supported by the title or abstract.
-- If the original reason says "the title explicitly mentions X", verify the actual title.
-- If X or a clear semantic equivalent is not present in the title, reason_is_supported=false.
-- If the reason claims evidence that is not in the title or abstract, reason_is_supported=false.
-- If the original reason uses the same generic sentence for unrelated papers, reason_is_supported=false.
-- If the original reason says the paper matches the user's intent but only mentions generic words, reason_is_supported=false.
-- If the original reason overstates relevance, do not automatically reject the paper.
-- Instead, correct the relevance level and write a more accurate judge_reason.
-- Do not invent evidence.
-- Use only the supplied title and abstract.
-- If the abstract is absent, use the title cautiously. Reject unless the title clearly supports direct or background relevance.
-
-Invented evidence rule:
-If the original reason claims that a title explicitly mentions a topic, but the actual title does not mention that topic or a close equivalent, the original validation is incorrect.
-In that case:
+Evidência inventada:
+Se a justificativa original afirma que o título menciona um tema, mas o título não menciona esse tema nem equivalente próximo:
 - validation_is_correct=false;
 - reason_is_supported=false;
-- corrected_relevance must be lower than the original relevance;
-- corrected_decision must be corrected according to the real evidence.
+- corrected_relevance deve ser menor que a relevância original;
+- corrected_decision deve refletir a evidência real.
 
-Repeated reason rule:
-If many papers have the same or nearly the same relevance_reason, audit each one independently.
-Do not accept repeated justifications unless each specific title or abstract truly supports that justification.
+Raciocínio específico por tema:
+Não use regras fixas de domínio.
+Para cada busca, infira os requisitos centrais a partir da query atual, tema revisado, primary_intent, conservative_filters, expansive_filters e negative_constraints.
 
-For audio-based violence detection topics:
-If the search is about audio-based violence detection:
-- Direct papers about violence detection using audio signals should be high/include.
-- Papers about audio-based danger detection, aggression detection, scream detection, abnormal sound detection, violent event detection, or security-related acoustic event detection may be high or medium depending on evidence.
-- Papers about audio emotion recognition, speech emotion recognition, environmental sound classification, audio event detection, acoustic scene classification, or general audio recognition may be low/include as background methods when audio or speech is central.
-- Papers about video-only violence detection, image-only violence detection, visual surveillance, multimodal violence detection where audio is not central, deepfake detection, text-based hate speech, education, agriculture, robotics, drone detection, or unrelated domains should be reject/exclude.
+Calibração de importância:
+- Use a escala completa.
 
-For audio classification topics:
-If the search is about audio classification, modern audio classification techniques, or SOTA audio classification:
-- audio, sound, speech, acoustic signals, music, voice, environmental sound, or another sonic/audio signal must be central for direct or background inclusion;
-- classification, recognition, categorization, identification, detection, or a closely related audio analysis task should be central;
-- a computational method, model, algorithm, survey, benchmark, dataset, representation, or technical comparison should be connected to the audio task.
-- Reject papers about grape leaf classification, plant disease classification, bacterial classification, generic classification methods without audio, generic deep learning reviews without audio, generic time-series classification without audio, image classification without audio, object detection in images, mixed reality without audio classification, recommendation systems without audio classification, robotics without audio classification, drone detection without audio classification, or education technology without audio classification.
+Correção do juiz:
+- Se a validação original diz high/include, mas o artigo é apenas parcialmente relacionado, use medium ou low; não transforme tudo em reject.
+- Se a validação original diz reject/exclude, mas o artigo é útil como base, use low/include.
+- Use reject somente quando não houver relação útil ou houver violação clara.
 
-Examples:
+Exemplos ilustrativos:
+Não trate os exemplos como regras fixas. Use-os apenas como padrão de raciocínio.
 
-Direct positive example:
-User topic: audio-based violence detection
-Paper title: A novel tree pattern-based violence detection model using audio signals
-Original validation: high/include
-Expected audit:
-- validation_is_correct=true
-- reason_is_supported=true
-- passes_conservative_filters=true
-- violates_negative_constraints=false
-- corrected_relevance="high"
-- corrected_decision="include"
-- judge_reason: "The title directly addresses violence detection using audio signals."
-
-Related positive example:
-User topic: audio-based violence detection
-Paper title: Audio signal based danger detection using signal processing and deep learning
-Original validation: high/include
-Expected audit:
-- validation_is_correct=true
-- reason_is_supported=true
-- passes_conservative_filters=true
-- violates_negative_constraints=false
-- corrected_relevance="high"
-- corrected_decision="include"
-- judge_reason: "The title describes danger detection from audio signals using signal processing and deep learning, which is closely aligned with audio-based violence or threat detection."
-
-Background example 1:
-User topic: audio-based violence detection
-Paper title: Supervised machine learning for audio emotion recognition
-Original validation: high/include
-Expected audit:
+Exemplo A:
+Tema: audio-based violence detection
+Título: Supervised machine learning for audio emotion recognition
+Saída esperada:
 - validation_is_correct=false
 - reason_is_supported=false
 - passes_conservative_filters=false
 - violates_negative_constraints=false
 - corrected_relevance="low"
 - corrected_decision="include"
-- judge_reason: "The paper is not about violence detection, but it studies supervised machine learning for audio emotion recognition, which may provide background methods for audio-based recognition."
+- judge_reason: "O artigo não trata de detecção de violência, mas estuda machine learning supervisionado para reconhecimento de emoção em áudio, podendo fornecer base metodológica para reconhecimento baseado em áudio."
 
-Background example 2:
-User topic: audio-based violence detection
-Paper title: Clustering-Based Speech Emotion Recognition by Incorporating Learned Features and Deep BiLSTM
-Original validation: high/include
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=false
-- corrected_relevance="low"
-- corrected_decision="include"
-- judge_reason: "The paper focuses on speech emotion recognition rather than violence detection, but it uses audio/speech recognition methods that may be useful as background."
-
-Reject example 1:
-User topic: audio-based violence detection
-Paper title: A Survey on the Detection and Impacts of Deepfakes in Visual, Audio, and Textual Formats
-Original validation: high/include
-Original reason: The title explicitly mentions audio-based violence detection.
-Expected audit:
+Exemplo B:
+Tema: audio-based violence detection
+Título: Violence Detection in Videos by Combining 3D CNNs and SVM
+Saída esperada:
 - validation_is_correct=false
 - reason_is_supported=false
 - passes_conservative_filters=false
 - violates_negative_constraints=true
 - corrected_relevance="reject"
 - corrected_decision="exclude"
-- judge_reason: "The paper is about deepfake detection across visual, audio, and textual formats, not audio-based violence detection. The original reason invents evidence not present in the title."
+- judge_reason: "O artigo trata de detecção de violência em vídeo, não de detecção de violência baseada em áudio."
 
-Reject example 2:
-User topic: audio-based violence detection
-Paper title: Deepfake Generation and Detection: Case Study and Challenges
-Original validation: high/include
-Original reason: The title directly mentions audio-based violence detection.
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=true
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is about deepfake generation and detection, not audio-based violence detection. The original reason is not supported by the title."
-
-Reject example 3:
-User topic: audio-based violence detection
-Paper title: Advances and Challenges in Drone Detection and Classification Techniques: A State-of-the-Art Review
-Original validation: high/include
-Original reason: The title explicitly mentions audio-based violence detection.
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=true
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is about drone detection and classification, not audio-based violence detection. The original reason invents evidence not present in the title."
-
-Reject example 4:
-User topic: audio-based violence detection
-Paper title: Violence Detection in Videos by Combining 3D Convolutional Neural Networks and Support Vector Machines
-Original validation: high/include
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=true
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is about video-based violence detection, not audio-based violence detection."
-
-Reject example 5:
-User topic: modern audio classification techniques
-Paper title: Advancements in deep learning for accurate classification of grape leaves and diagnosis of grape diseases
-Original validation: high/include
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=true
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is about grape leaf disease classification, not audio classification."
-
-Reject example 6:
-User topic: modern audio classification techniques
-Paper title: Deep learning modelling techniques: current progress, applications, advantages, and challenges
-Original validation: high/include
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=false
-- passes_conservative_filters=false
-- violates_negative_constraints=false
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is a generic deep learning review and does not establish audio classification as the central topic."
-
-Reject example 7:
-User topic: modern audio classification techniques
-Paper title: A History of Audio Effects
-Original validation: high/include
-Expected audit:
-- validation_is_correct=false
-- reason_is_supported=true
-- passes_conservative_filters=false
-- violates_negative_constraints=false
-- corrected_relevance="reject"
-- corrected_decision="exclude"
-- judge_reason: "The paper is audio-related, but it is about audio effects history, not audio classification techniques."
-
-Positive example:
-User topic: modern audio classification techniques
-Paper title: Audio classification using self-supervised learning representations
-Original validation: high/include
-Expected audit:
+Exemplo C:
+Tema: modern audio classification techniques
+Título: Audio classification using self-supervised learning representations
+Saída esperada:
 - validation_is_correct=true
 - reason_is_supported=true
 - passes_conservative_filters=true
 - violates_negative_constraints=false
 - corrected_relevance="high"
 - corrected_decision="include"
-- judge_reason: "The paper directly addresses audio classification using a modern computational technique."
+- judge_reason: "O artigo aborda diretamente classificação de áudio com uma técnica computacional moderna."
 
-Mandatory judging rules:
-- Evaluate semantic subject alignment, not isolated keyword overlap.
-- Do not preserve the original decision out of politeness.
-- validation_is_correct is true only when the original relevance and decision are both correct.
-- passes_conservative_filters is true only when the paper satisfies the direct central conservative requirements.
-- passes_conservative_filters may be false for low/include background papers.
-- violates_negative_constraints is true when the paper clearly matches a negative constraint or a wrong-domain interpretation.
-- If violates_negative_constraints=true, corrected_relevance must be "reject" and corrected_decision must be "exclude".
-- judge_reason must be a short, concrete, evidence-based reason in English.
+Exemplo D:
+Tema: modern audio classification techniques
+Título: A comprehensive survey on support vector machine classification
+Saída esperada:
+- validation_is_correct=false
+- reason_is_supported=false
+- passes_conservative_filters=false
+- violates_negative_constraints=false
+- corrected_relevance="reject"
+- corrected_decision="exclude"
+- judge_reason: "O artigo trata de métodos de classificação de forma geral, mas não estabelece audio classification como tema central."
 
-Allowed labels:
-- corrected_relevance: "high", "medium", "low", or "reject"
-- corrected_decision: "include" or "exclude"
+Exemplo E:
+Tema: explainable AI methods for machine learning models
+Título: Fairness and Accountability in Automated Decision Systems
+Saída esperada:
+- corrected_relevance="low"
+- corrected_decision="include"
+- judge_reason: "O artigo não trata diretamente de métodos de explicabilidade, mas pode fornecer base de contexto sobre responsible AI se a busca permitir uma visão mais ampla."
 
-Critical output rules:
-- Return exactly {candidate_count} object(s) inside judged_validations.
-- Return one object for every candidate paper and no other papers.
-- paper_id must exactly match the supplied candidate id.
-- All boolean fields must be JSON booleans.
-- Do not add extra keys.
+Regras obrigatórias:
+- Avalie alinhamento semântico, não palavras isoladas.
+- Não preserve a decisão original por cortesia.
+- validation_is_correct é true somente se relevância e decisão originais estiverem corretas.
+- passes_conservative_filters é true somente para atendimento direto aos critérios centrais.
+- passes_conservative_filters pode ser false para low/include.
+- violates_negative_constraints é true quando houver restrição negativa ou interpretação de domínio incorreto.
+- Se violates_negative_constraints=true, corrected_relevance deve ser "reject" e corrected_decision deve ser "exclude".
+- judge_reason deve ser uma justificativa curta, concreta e baseada em evidência, em português.
+- summary deve ser em português para facilitar depuração.
+- Mantenha chaves JSON e rótulos em inglês.
 
-Required JSON shape:
-{{"judged_validations":[{{"paper_id":"paper id","validation_is_correct":true,"reason_is_supported":true,"passes_conservative_filters":true,"violates_negative_constraints":false,"corrected_relevance":"high","corrected_decision":"include","judge_reason":"short reason"}}],"summary":"short summary"}}
+Rótulos permitidos:
+- corrected_relevance: "high", "medium", "low" ou "reject"
+- corrected_decision: "include" ou "exclude"
+
+Regras críticas de saída:
+- Retorne exatamente {candidate_count} objetos em judged_validations.
+- Retorne um objeto para cada candidato e nenhum artigo adicional.
+- paper_id deve corresponder exatamente ao id fornecido.
+- Campos booleanos devem ser booleanos JSON.
+- Não adicione chaves extras.
+
+Formato JSON obrigatório:
+{{"judged_validations":[{{"paper_id":"paper id","validation_is_correct":true,"reason_is_supported":true,"passes_conservative_filters":true,"violates_negative_constraints":false,"corrected_relevance":"high","corrected_decision":"include","judge_reason":"justificativa curta em português"}}],"summary":"resumo curto em português"}}
 """
 
     return PromptSpec(
         name="judge_paper_validations",
         version=JUDGE_PAPER_VALIDATIONS_PROMPT_VERSION,
         text=text,
-        metadata={
-            "output_format": "json",
-            "purpose": "paper_validation_audit",
-        },
+        metadata={"output_format": "json", "purpose": "paper_validation_audit"},
     )
+
 
 def build_refine_queries_prompt(
     context: SearchContext,
@@ -1420,116 +939,86 @@ def build_refine_queries_prompt(
     used_queries: list[str],
     search_feedback: dict[str, object] | None = None,
 ) -> PromptSpec:
-    """Prompt for refining search queries after feedback and validation."""
+    """Prompt para refinar queries após validação e feedback."""
 
     evidence = _format_validated_papers(validated_papers[:12])
-    used = "; ".join(used_queries[-8:]) or "none"
+    used = "; ".join(used_queries[-8:]) or "nenhuma"
     feedback = search_feedback or {}
     revised_topic = _feedback_text(feedback, "revised_topic") or context.user_query
     positive_constraints = _feedback_list(feedback, "positive_constraints")
     negative_constraints = _feedback_list(feedback, "negative_constraints")
-    query_strategy = _feedback_text(feedback, "query_strategy") or "none"
+    query_strategy = _feedback_text(feedback, "query_strategy") or "nenhuma"
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are planning a new round of academic search queries after previous results were semantically validated.
+Você está planejando uma nova rodada de queries acadêmicas após a validação semântica dos resultados anteriores.
 
-User original topic:
+Tema original:
 {context.user_query}
 
-Current revised topic:
+Tema revisado atual:
 {revised_topic}
 
-Minimum year:
+Ano mínimo:
 {context.min_year}
 
-Used queries:
+Queries já usadas:
 {used}
 
-Validated-paper evidence:
+Evidências dos artigos validados:
 {evidence}
 
-Positive constraints:
+Restrições positivas:
 {_format_items(positive_constraints)}
 
-Negative constraints:
+Restrições negativas:
 {_format_items(negative_constraints)}
 
-Query strategy:
+Estratégia de busca:
 {query_strategy}
 
-Task:
-Create exactly 3 new academic search queries.
-The new queries must improve recall while avoiding the mistakes found in rejected papers.
-Do not repeat used queries.
+Tarefa:
+Crie exatamente 3 novas queries acadêmicas.
+Elas devem melhorar recall e evitar os erros encontrados nos artigos rejeitados.
+Não repita queries já usadas.
 
-Core refinement strategy:
-- Use included high/medium papers as evidence for useful terminology.
-- Use rejected papers and mismatch reasons as evidence for what to avoid.
-- If previous results drifted to the wrong domain, enforce the correct domain.
-- If previous results drifted to the wrong modality, enforce the correct modality or close synonym.
-- If previous results drifted to the wrong task, enforce the correct task.
-- If previous results were too narrow, explore close synonyms or broader faithful terminology.
-- If previous results were too broad, use more precise academic terms.
-- If the user gave feedback, follow it more strongly than previous evidence.
+Estratégia:
+- Use artigos high/medium incluídos como evidência de terminologia útil.
+- Use artigos low/include com cautela, apenas como inspiração secundária.
+- Use artigos rejeitados e mismatch_reason para identificar o que evitar.
+- Corrija desvios de domínio, modalidade ou tarefa.
+- Se os resultados anteriores foram estreitos demais, explore sinônimos próximos.
+- Se foram amplos demais, use termos acadêmicos mais precisos.
+- Priorize o feedback do usuário sobre evidências anteriores.
 
-Core anchors and optional terms:
-- Identify core anchors from the revised topic and feedback.
-- Core anchors must appear in every query, exactly or as close synonyms.
-- Optional technical terms should appear in some queries, not necessarily all.
-- Do not make all three queries minor variations of each other.
+Núcleos e termos opcionais:
+- Identifique os núcleos obrigatórios do tema revisado e do feedback.
+- Esses núcleos devem aparecer em todas as queries, exatamente ou por sinônimos próximos.
+- Termos técnicos opcionais podem aparecer em apenas algumas queries.
+- As três queries devem ser significativamente diferentes.
 
-General-topic behavior:
-If the revised topic is general or broad:
-- one query may include "state of the art", "trends", "overview", "survey", or "review" when useful;
-- do not put those terms in all queries unless the user explicitly asked only for reviews or surveys.
+Tema geral:
+Se o tema revisado for geral, uma query pode usar "state of the art", "trends", "overview", "survey" ou "review".
+Não use esses termos em todas, salvo pedido explícito por reviews/surveys.
 
-Rules:
-- Return only the final JSON object.
-- The queries array must contain exactly 3 non-empty strings.
-- Academic search queries must be in English.
-- The reason must be in English because it is internal.
-- Every query must follow the revised topic.
-- Every query must respect positive constraints, negative constraints, and query strategy.
-- Avoid terms from negative constraints.
-- Avoid broad queries that caused irrelevant results before.
-- Do not invent datasets, metrics, domains, modalities, methods, applications, or review intent.
-- Do not use rejected paper titles as positive query inspiration.
+Regras:
+- queries deve conter exatamente 3 strings não vazias.
+- As queries acadêmicas devem obrigatoriamente permanecer em inglês.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
+- Toda query deve seguir o tema revisado, restrições e estratégia.
+- Evite termos das negative_constraints.
+- Não invente datasets, métricas, domínios, modalidades, métodos, aplicações ou intenção de review.
+- Não use títulos rejeitados como inspiração positiva.
 
-Examples:
+Exemplo:
+Tema revisado: general audio-based violence detection
+Evidência rejeitada: video-based violence detection; hate speech detection; deepfake detection
+Saída:
+{{"queries":["audio-based violence detection","acoustic violent event detection","state of the art sound-based violence detection"],"reason":"As novas queries preservam os núcleos de áudio e detecção de violência, evitando desvios para vídeo, texto e deepfakes."}}
 
-Case:
-Revised topic: general audio-based violence detection
-Rejected evidence: video-based violence detection; hate speech detection; deepfake detection
-Output:
-{{"queries":[
-  "audio-based violence detection",
-  "acoustic violent event detection",
-  "state of the art sound-based violence detection"
-],"reason":"the new queries preserve audio and violence detection anchors while avoiding visual, text, and deepfake drift"}}
-
-Case:
-Revised topic: shopping agents using LLMs and VLMs
-Rejected evidence: warehouse automation; VR shopping without agents; generic generative AI reviews
-Output:
-{{"queries":[
-  "AI shopping agents",
-  "LLM agents for online shopping",
-  "VLM shopping assistants in e-commerce"
-],"reason":"the new queries preserve shopping agents while avoiding logistics and generic AI drift"}}
-
-Case:
-Revised topic: bias in medical image classification
-Rejected evidence: generic medical imaging; fairness essays without computational evaluation
-Output:
-{{"queries":[
-  "bias in medical image classification",
-  "dataset bias in medical imaging classification",
-  "shortcut learning in medical image classification"
-],"reason":"the new queries preserve bias and medical image classification while exploring related computational bias terminology"}}
-
-Required JSON shape:
-{{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"short reason"}}
+Formato JSON obrigatório:
+{{"queries":["academic search query 1","academic search query 2","academic search query 3"],"reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -1547,49 +1036,50 @@ def build_feedback_analysis_prompt(
     validated_papers: list[dict[str, object]],
     used_queries: list[str],
 ) -> PromptSpec:
-    """Prompt for interpreting human feedback on validated papers."""
+    """Prompt para interpretar feedback humano nos artigos validados."""
 
     papers = _format_validated_papers(validated_papers[:20])
-    used = "; ".join(used_queries[-10:]) or "none"
+    used = "; ".join(used_queries[-10:]) or "nenhuma"
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-You are improving an academic paper search after the user reviewed the validated papers.
+Você está melhorando uma busca acadêmica após o usuário revisar os artigos validados.
 
-Task:
-Interpret the user's critique into structured search guidance before generating new queries.
+Tarefa:
+Interprete a crítica do usuário como orientação estruturada antes de gerar novas queries.
 
-Inputs:
-Original user query: {original_query}
-Current refined query: {refined_query}
-User feedback: {user_feedback}
-Used queries: {used}
-Validated-paper evidence:
+Entradas:
+Consulta original: {original_query}
+Consulta refinada atual: {refined_query}
+Feedback do usuário: {user_feedback}
+Queries usadas: {used}
+Evidências dos artigos validados:
 {papers}
 
-Rules:
-- Do not generate search queries here.
-- Do not copy the raw feedback into query_strategy.
-- Convert the feedback into a cleaner academic revised_topic.
-- Write revised_topic, positive_constraints, negative_constraints, query_strategy, and reason in English.
-- Keep JSON keys in English.
-- Preserve the original research intent unless the user explicitly changes it.
-- Put desired concepts, modalities, methods, domains, or terms in positive_constraints.
-- Put excluded concepts, modalities, methods, domains, or interpretations in negative_constraints.
-- Make query_strategy an actionable sentence for the next query-planning step.
-- Keep each constraint short and searchable.
-- Use included and excluded papers as evidence for what worked and what failed.
-- If the user says a term was ambiguous, choose the clarified meaning and exclude the wrong meanings.
+Regras:
+- Não gere queries nesta etapa.
+- Não copie o feedback bruto diretamente para query_strategy.
+- Converta o feedback em um revised_topic acadêmico mais limpo.
+- revised_topic deve permanecer em inglês porque será usado para gerar queries.
+- positive_constraints, negative_constraints, query_strategy e reason devem ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
+- Preserve a intenção original, salvo mudança explícita do usuário.
+- Coloque conceitos, modalidades, métodos, domínios ou termos desejados em positive_constraints.
+- Coloque conceitos, modalidades, métodos, domínios ou interpretações excluídos em negative_constraints.
+- query_strategy deve ser uma frase acionável para a próxima etapa.
+- Mantenha cada restrição curta e pesquisável.
+- Use artigos incluídos e excluídos como evidência do que funcionou e falhou.
+- Se o usuário esclarecer termo ambíguo, selecione o significado correto e exclua os incorretos.
 
-Expected case:
-Original user query: audio violence detection
-Current refined query: general audio-based violence detection
-User feedback: na verdade era para ser apenas audio, sem multimodal e sem audio-visual
-Output:
-{{"revised_topic":"general audio-only violence detection","positive_constraints":["audio-only violence detection","sound-based detection","acoustic signals"],"negative_constraints":["multimodal","audio-visual","audiovisual","video-based detection","visual surveillance"],"query_strategy":"Search for violence detection papers where audio, sound, or acoustic signals are the central input. Avoid multimodal, audiovisual, video-based, or visual-surveillance papers.","reason":"The user clarified that the intended modality is audio only and rejected multimodal or audiovisual results."}}
+Exemplo:
+Consulta original: audio violence detection
+Consulta refinada: general audio-based violence detection
+Feedback: na verdade era para ser apenas audio, sem multimodal e sem audio-visual
+Saída:
+{{"revised_topic":"general audio-only violence detection","positive_constraints":["detecção de violência somente por áudio","detecção baseada em som","sinais acústicos"],"negative_constraints":["multimodal","audio-visual","audiovisual","detecção baseada em vídeo","vigilância visual"],"query_strategy":"Buscar artigos em que áudio, som ou sinais acústicos sejam a entrada central e evitar trabalhos multimodais, audiovisuais ou baseados em vídeo.","reason":"O usuário esclareceu que a modalidade pretendida é somente áudio e rejeitou resultados multimodais ou audiovisuais."}}
 
-Required JSON shape:
-{{"revised_topic":"clean revised academic topic","positive_constraints":["constraint"],"negative_constraints":["constraint"],"query_strategy":"actionable query strategy","reason":"short reason"}}
+Formato JSON obrigatório:
+{{"revised_topic":"clean revised academic topic in English","positive_constraints":["restrição em português"],"negative_constraints":["restrição em português"],"query_strategy":"estratégia acionável em português","reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -1607,29 +1097,31 @@ def build_continue_decision_prompt(
     last_new_paper_count: int,
     last_new_useful_count: int,
 ) -> PromptSpec:
-    """Prompt for deciding whether another search round is useful."""
+    """Prompt para decidir se outra rodada é útil."""
 
     evidence = _format_validated_papers(validated_papers[:10])
 
-    text = f"""Return only one JSON object. No markdown. No explanation.
+    text = f"""Retorne somente um objeto JSON. Sem markdown. Sem explicações fora do JSON.
 
-Decide if another academic search round is useful.
+Decida se outra rodada de busca acadêmica é útil.
 
-Topic: {context.user_query}
-Round: {round_number} of {context.max_rounds}
-New papers: {last_new_paper_count}
-New useful validated papers: {last_new_useful_count}
-Validated-paper evidence:
+Tema: {context.user_query}
+Rodada: {round_number} de {context.max_rounds}
+Novos artigos: {last_new_paper_count}
+Novos artigos úteis validados: {last_new_useful_count}
+Evidências dos artigos validados:
 {evidence}
 
-Decision rules:
-- Continue if there are too few useful high/medium papers and the rejected evidence suggests a fixable query drift.
-- Stop if enough useful validated papers were found.
-- Stop if the latest round mostly repeats old mistakes and no clear new query direction exists.
-- The reason must be in English because it is internal.
+Regras:
+- Continue se houver poucos artigos high/medium úteis e as rejeições indicarem um desvio corrigível nas queries.
+- Continue se os artigos low indicarem uma direção promissora que ainda precisa de queries mais precisas.
+- Pare se já houver artigos úteis suficientes.
+- Pare se a última rodada repetir os mesmos erros e não houver direção nova clara.
+- reason deve ser em português para facilitar depuração.
+- Mantenha as chaves JSON em inglês.
 
-Required JSON shape:
-{{"continue":true,"reason":"short reason"}}
+Formato JSON obrigatório:
+{{"continue":true,"reason":"justificativa curta em português"}}
 """
 
     return PromptSpec(
@@ -1661,41 +1153,41 @@ def _feedback_list(feedback: dict[str, object], key: str) -> list[str]:
 
 
 def _format_items(items: list[str]) -> str:
-    return "; ".join(items) if items else "none"
+    return "; ".join(items) if items else "nenhum"
 
 
 def _format_candidate_papers(papers: list[Paper]) -> str:
     if not papers:
-        return "none"
+        return "nenhum"
 
     lines: list[str] = []
     for position, paper in enumerate(papers, start=1):
-        abstract = " ".join((paper.abstract or "").split())[:700] or "no abstract"
+        abstract = " ".join((paper.abstract or "").split())[:700] or "sem abstract"
         lines.append(
-            f"{position}. id={paper.id}; title={paper.title}; "
-            f"year={paper.year or 'unknown'}; source={paper.source}; "
-            f"url={paper.url or 'none'}; abstract={abstract}"
+            f"{position}. id={paper.id}; título={paper.title}; "
+            f"ano={paper.year or 'desconhecido'}; fonte={paper.source}; "
+            f"url={paper.url or 'nenhuma'}; abstract={abstract}"
         )
     return "\n".join(lines)
 
 
 def _format_validated_papers(validated_papers: list[dict[str, object]]) -> str:
     if not validated_papers:
-        return "none"
+        return "nenhum"
 
     lines: list[str] = []
     for position, item in enumerate(validated_papers, start=1):
         paper = item.get("paper")
-        title = getattr(paper, "title", "unknown")
-        paper_id = getattr(paper, "id", item.get("paper_id", "unknown"))
-        relevance = _feedback_text(item, "relevance") or "unknown"
-        decision = _feedback_text(item, "decision") or "unknown"
+        title = getattr(paper, "title", "desconhecido")
+        paper_id = getattr(paper, "id", item.get("paper_id", "desconhecido"))
+        relevance = _feedback_text(item, "relevance") or "desconhecida"
+        decision = _feedback_text(item, "decision") or "desconhecida"
         relevance_reason = _feedback_text(item, "relevance_reason")
         mismatch_reason = _feedback_text(item, "mismatch_reason")
         lines.append(
-            f"{position}. id={paper_id}; title={title}; relevance={relevance}; "
-            f"decision={decision}; why_in={relevance_reason or 'none'}; "
-            f"why_out={mismatch_reason or 'none'}"
+            f"{position}. id={paper_id}; título={title}; relevance={relevance}; "
+            f"decision={decision}; motivo_inclusão={relevance_reason or 'nenhum'}; "
+            f"motivo_exclusão={mismatch_reason or 'nenhum'}"
         )
     return "\n".join(lines)
 
@@ -1704,31 +1196,31 @@ def _format_validated_papers_for_judge(
     validated_papers: list[dict[str, object]],
 ) -> str:
     if not validated_papers:
-        return "none"
+        return "nenhum"
 
     lines: list[str] = []
     for position, item in enumerate(validated_papers, start=1):
         paper = item.get("paper")
-        paper_id = getattr(paper, "id", item.get("paper_id", "unknown"))
+        paper_id = getattr(paper, "id", item.get("paper_id", "desconhecido"))
         lines.append(
             f"{position}. paper_id={paper_id}; "
-            f"relevance={_feedback_text(item, 'relevance') or 'unknown'}; "
-            f"decision={_feedback_text(item, 'decision') or 'unknown'}; "
-            f"relevance_reason={_feedback_text(item, 'relevance_reason') or 'none'}; "
-            f"mismatch_reason={_feedback_text(item, 'mismatch_reason') or 'none'}; "
-            f"useful_for={_feedback_text(item, 'useful_for') or 'none'}"
+            f"relevance={_feedback_text(item, 'relevance') or 'desconhecida'}; "
+            f"decision={_feedback_text(item, 'decision') or 'desconhecida'}; "
+            f"relevance_reason={_feedback_text(item, 'relevance_reason') or 'nenhuma'}; "
+            f"mismatch_reason={_feedback_text(item, 'mismatch_reason') or 'nenhuma'}; "
+            f"useful_for={_feedback_text(item, 'useful_for') or 'nenhum'}"
         )
     return "\n".join(lines)
 
 
 def _format_candidate_papers_for_judge(papers: list[Paper]) -> str:
     if not papers:
-        return "none"
+        return "nenhum"
 
     lines: list[str] = []
     for position, paper in enumerate(papers, start=1):
-        abstract = " ".join((paper.abstract or "").split())[:700] or "no abstract"
+        abstract = " ".join((paper.abstract or "").split())[:700] or "sem abstract"
         lines.append(
-            f"{position}. paper_id={paper.id}; title={paper.title}; abstract={abstract}"
+            f"{position}. paper_id={paper.id}; título={paper.title}; abstract={abstract}"
         )
     return "\n".join(lines)

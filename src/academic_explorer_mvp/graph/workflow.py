@@ -69,7 +69,7 @@ def build_graph(config: AppConfig):
     graph.add_node("handle_paper_feedback", nodes.handle_paper_feedback)
     graph.add_node("analyze_search_feedback", lambda state: nodes.analyze_search_feedback(state, planner))
     graph.add_node("decide_next_step", lambda state: nodes.decide_next_step(state, planner))
-    ##
+    ## 
     graph.add_node("finalize", lambda state: state)
     graph.add_node("wait_for_user", lambda state: state)
     
