@@ -4,13 +4,10 @@
 
 from datetime import datetime
 import math
-import re
 
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.paper import Paper, RankedPaper
-
-
-TOKEN_RE = re.compile(r"[a-z0-9]+")
+from academic_explorer_mvp.utils.text import TOKEN_RE, find_constraint_hits
 
 
 class PaperRanker:
@@ -83,7 +80,7 @@ class PaperRanker:
             reasons.append("has DOI")
 
         score = title_score + abstract_score + year_score + citation_score + metadata_score
-        negative_hits = self._negative_hits(combined_text, negative_constraints)
+        negative_hits = find_constraint_hits(combined_text, negative_constraints)
         if negative_hits:
             penalty = 4.0 * len(negative_hits)
             score = max(0.0, score - penalty)
@@ -105,22 +102,3 @@ class PaperRanker:
     def _terms(self, query: str) -> list[str]:
         return [term for term in TOKEN_RE.findall(query.lower()) if len(term) > 2]
 
-    def _negative_hits(self, text: str, constraints: list[str]) -> list[str]:
-        normalized_text = " ".join(TOKEN_RE.findall(text.lower()))
-        hits: list[str] = []
-        seen: set[str] = set()
-        for constraint in constraints:
-            label = " ".join(str(constraint).split())
-            normalized_constraint = " ".join(TOKEN_RE.findall(label.lower()))
-            if not normalized_constraint or normalized_constraint in seen:
-                continue
-
-            if " " in normalized_constraint:
-                matched = normalized_constraint in normalized_text
-            else:
-                matched = re.search(rf"\b{re.escape(normalized_constraint)}\b", normalized_text) is not None
-
-            if matched:
-                seen.add(normalized_constraint)
-                hits.append(label)
-        return hits

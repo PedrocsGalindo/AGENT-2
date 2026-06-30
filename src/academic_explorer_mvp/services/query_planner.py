@@ -1,8 +1,6 @@
 """Query planning powered by the local model."""
 
 from dataclasses import dataclass
-import re
-import unicodedata
 
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.paper import Paper
@@ -21,10 +19,18 @@ from academic_explorer_mvp.llm.prompts import (
     build_rewrite_user_query_prompt,
     build_validate_papers_prompt,
 )
-
-def _chunked(items: list, size: int):
-    for i in range(0, len(items), size):
-        yield items[i:i + size]
+from academic_explorer_mvp.utils.text import (
+    chunked,
+    clean_text,
+    merge_unique_texts,
+    normalize_ascii_words,
+    unique_clean_texts,
+)
+from academic_explorer_mvp.utils.validation import (
+    force_reject_if_needed,
+    normalize_decision,
+    normalize_relevance,
+)
 
 @dataclass(frozen=True)
 class QueryAssessment:
@@ -444,7 +450,7 @@ class QueryPlanner:
         all_validations: list[PaperValidation] = []
         summaries: list[str] = []
 
-        for batch_index, papers_batch in enumerate(_chunked(papers, validation_batch_size), start=1):
+        for batch_index, papers_batch in enumerate(chunked(papers, validation_batch_size), start=1):
             result = self._validate_papers_batch(
                 context=context,
                 papers=papers_batch,
@@ -507,10 +513,10 @@ class QueryPlanner:
             validations.append(
                 PaperValidation(
                     paper_id=paper_id,
-                    relevance=self._normalize_relevance(
+                    relevance=normalize_relevance(
                         self._safe_string(raw_item, "relevance")
                     ),
-                    decision=self._normalize_decision(
+                    decision=normalize_decision(
                         self._safe_string(raw_item, "decision"),
                         self._safe_string(raw_item, "relevance"),
                     ),
@@ -549,7 +555,7 @@ class QueryPlanner:
         summaries: list[str] = []
 
         for batch_index, papers_batch in enumerate(
-            _chunked(papers, judge_batch_size),
+            chunked(papers, judge_batch_size),
             start=1,
         ):
             validated_batch = [
@@ -621,18 +627,18 @@ class QueryPlanner:
                 "violates_negative_constraints",
                 default=True,
             )
-            corrected_relevance = self._normalize_relevance(
+            corrected_relevance = normalize_relevance(
                 self._safe_string(raw_item, "corrected_relevance")
             )
-            corrected_decision = self._normalize_decision(
+            corrected_decision = normalize_decision(
                 self._safe_string(raw_item, "corrected_decision"),
                 corrected_relevance,
             )
-            if violates_negative_constraints:
-                corrected_relevance = "reject"
-                corrected_decision = "exclude"
-            elif corrected_relevance == "reject":
-                corrected_decision = "exclude"
+            corrected_relevance, corrected_decision = force_reject_if_needed(
+                corrected_relevance,
+                corrected_decision,
+                violates_negative_constraints=violates_negative_constraints,
+            )
 
             judgments.append(
                 JudgedPaperValidation(
@@ -707,7 +713,7 @@ class QueryPlanner:
     ) -> QueryContextAssessment | None:
         """Correct common context-assessment mistakes from small local models."""
 
-        text = self._normalized_query_text(user_query)
+        text = normalize_ascii_words(user_query)
         tokens = set(text.split())
 
         if not text:
@@ -815,11 +821,6 @@ class QueryPlanner:
 
         return None
 
-    def _normalized_query_text(self, value: str) -> str:
-        normalized = unicodedata.normalize("NFKD", value)
-        ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-        return " ".join(re.findall(r"[a-z0-9]+", ascii_text.lower()))
-
     def _extract_queries(self, payload: object) -> list[str]:
         if isinstance(payload, dict):
             raw_queries = payload.get("queries")
@@ -831,20 +832,7 @@ class QueryPlanner:
         if not isinstance(raw_queries, list):
             return []
 
-        queries: list[str] = []
-        seen: set[str] = set()
-        for item in raw_queries:
-            if not isinstance(item, str):
-                continue
-            query = " ".join(item.split())
-            key = query.lower()
-            if not query or key in seen:
-                continue
-            seen.add(key)
-            queries.append(query[:160])
-            if len(queries) >= self.max_queries_per_round:
-                break
-        return queries
+        return unique_clean_texts(raw_queries, max_length=160)[: self.max_queries_per_round]
 
     def _extract_bool(
         self,
@@ -885,20 +873,13 @@ class QueryPlanner:
         normalized = dict(payload)
 
         def merged(keys: list[str], max_length: int = 120) -> list[str]:
-            items: list[str] = []
-            seen: set[str] = set()
-            for key in keys:
-                for item in self._optional_string_list(
-                    normalized,
-                    key,
-                    max_length=max_length,
-                ):
-                    item_key = item.lower()
-                    if item_key in seen:
-                        continue
-                    seen.add(item_key)
-                    items.append(item)
-            return items
+            return merge_unique_texts(
+                (
+                    self._optional_string_list(normalized, key, max_length=max_length)
+                    for key in keys
+                ),
+                max_length=max_length,
+            )
 
         primary_intent = self._optional_string(normalized, "primary_intent")
         conservative_filters = merged(
@@ -972,10 +953,7 @@ class QueryPlanner:
         key: str,
         default: str | None = None,
     ) -> str | None:
-        value = payload.get(key)
-        if value is None:
-            return default
-        text = " ".join(str(value).split())
+        text = clean_text(payload.get(key))
         return text or default
 
     def _required_bool(
@@ -1006,16 +984,7 @@ class QueryPlanner:
                 f"`{key}` list for {step_name}."
             )
 
-        strings: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            text = " ".join(str(item).split())
-            key_text = text.lower()
-            if not text or key_text in seen:
-                continue
-            seen.add(key_text)
-            strings.append(text[:max_length])
-        return strings
+        return unique_clean_texts(value, max_length=max_length)
 
     def _optional_string_list(
         self,
@@ -1023,33 +992,7 @@ class QueryPlanner:
         key: str,
         max_length: int = 120,
     ) -> list[str]:
-        value = payload.get(key)
-        if value is None:
-            return []
-        raw_items = value if isinstance(value, list) else [value]
-
-        strings: list[str] = []
-        seen: set[str] = set()
-        for item in raw_items:
-            text = " ".join(str(item).split())
-            key_text = text.lower()
-            if not text or key_text in seen:
-                continue
-            seen.add(key_text)
-            strings.append(text[:max_length])
-        return strings
-
-    def _normalize_relevance(self, value: str) -> str:
-        text = value.strip().lower()
-        if text in {"high", "medium", "low", "reject"}:
-            return text
-        return "reject"
-
-    def _normalize_decision(self, decision: str, relevance: str) -> str:
-        text = decision.strip().lower()
-        if text in {"include", "exclude"}:
-            return text
-        return "exclude" if self._normalize_relevance(relevance) == "reject" else "include"
+        return unique_clean_texts(payload.get(key), max_length=max_length)
 
     def _safe_string(
         self,
@@ -1060,4 +1003,4 @@ class QueryPlanner:
         value = payload.get(key)
         if value is None:
             value = default
-        return " ".join(str(value).split())
+        return clean_text(value)

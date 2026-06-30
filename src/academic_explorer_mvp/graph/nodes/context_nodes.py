@@ -2,6 +2,7 @@
 
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
+from academic_explorer_mvp.utils.text import clean_text
 
 
 QUERY_ENRICHMENT_DEFAULTS: dict[str, object] = {
@@ -67,6 +68,34 @@ PAUSE_STOP_REASONS = {
 }
 
 
+STATE_DEFAULTS: dict[str, object] = {
+    "round_number": 0,
+    "pending_queries": [],
+    "query_history": [],
+    "used_queries": [],
+    "raw_results": [],
+    "all_raw_results": [],
+    "normalized_papers": [],
+    "deduplicated_papers": [],
+    "ranked_papers": [],
+    "validated_papers": [],
+    "relevant_papers": [],
+    "excluded_papers": [],
+    "validation_summary": None,
+    "model_validation_summary": None,
+    "judge_validation_summary": None,
+    "judge_corrections_count": 0,
+    "validation_counts": {},
+    "known_paper_ids": [],
+    "last_new_paper_count": 0,
+    "last_new_paper_ids": [],
+    "last_new_useful_count": 0,
+    "provider_errors": [],
+    "stop_reason": None,
+    "model_continue_reason": None,
+}
+
+
 def initialize_context(state: SearchState) -> SearchState:
     """Initialize default state fields for the graph."""
 
@@ -74,30 +103,8 @@ def initialize_context(state: SearchState) -> SearchState:
         raise RuntimeError("SearchState must include a SearchContext.")
 
     new_state: SearchState = dict(state)
-    new_state.setdefault("round_number", 0)
-    new_state.setdefault("pending_queries", [])
-    new_state.setdefault("query_history", [])
-    new_state.setdefault("used_queries", [])
-    new_state.setdefault("raw_results", [])
-    new_state.setdefault("all_raw_results", [])
-    new_state.setdefault("normalized_papers", [])
-    new_state.setdefault("deduplicated_papers", [])
-    new_state.setdefault("ranked_papers", [])
-    new_state.setdefault("validated_papers", [])
-    new_state.setdefault("relevant_papers", [])
-    new_state.setdefault("excluded_papers", [])
-    new_state.setdefault("validation_summary", None)
-    new_state.setdefault("model_validation_summary", None)
-    new_state.setdefault("judge_validation_summary", None)
-    new_state.setdefault("judge_corrections_count", 0)
-    new_state.setdefault("validation_counts", {})
-    new_state.setdefault("known_paper_ids", [])
-    new_state.setdefault("last_new_paper_count", 0)
-    new_state.setdefault("last_new_paper_ids", [])
-    new_state.setdefault("last_new_useful_count", 0)
-    new_state.setdefault("provider_errors", [])
-    new_state.setdefault("stop_reason", None)
-    new_state.setdefault("model_continue_reason", None)
+    for key, value in STATE_DEFAULTS.items():
+        new_state.setdefault(key, value.copy() if isinstance(value, list | dict) else value)
     new_state["query_enrichment"] = _query_enrichment(new_state)
     new_state["query_preview"] = _query_preview(new_state)
     new_state["paper_feedback"] = _paper_feedback(new_state)
@@ -119,95 +126,90 @@ def _context(state: SearchState) -> SearchContext:
     return context
 
 
+def _substate(
+    state: SearchState,
+    key: str,
+    defaults: dict[str, object],
+) -> dict[str, object]:
+    value = state.get(key, {})
+    if not isinstance(value, dict):
+        value = {}
+    return {**defaults, **value}
+
+
+def _set_substate(
+    state: SearchState,
+    key: str,
+    defaults: dict[str, object],
+    **updates: object,
+) -> SearchState:
+    new_state: SearchState = dict(state)
+    new_state[key] = {**_substate(state, key, defaults), **updates}
+    return new_state
+
+
 def _query_enrichment(state: SearchState) -> dict[str, object]:
     """Return query enrichment substate with defaults applied."""
 
-    enrichment = state.get("query_enrichment", {})
-    if not isinstance(enrichment, dict):
-        enrichment = {}
-    return {**QUERY_ENRICHMENT_DEFAULTS, **enrichment}
+    return _substate(state, "query_enrichment", QUERY_ENRICHMENT_DEFAULTS)
 
 
 def _paper_feedback(state: SearchState) -> dict[str, object]:
     """Return paper feedback substate with defaults applied."""
 
-    feedback = state.get("paper_feedback", {})
-    if not isinstance(feedback, dict):
-        feedback = {}
-    return {**PAPER_FEEDBACK_DEFAULTS, **feedback}
+    return _substate(state, "paper_feedback", PAPER_FEEDBACK_DEFAULTS)
 
 
 def _query_preview(state: SearchState) -> dict[str, object]:
     """Return query preview substate with defaults applied."""
 
-    preview = state.get("query_preview", {})
-    if not isinstance(preview, dict):
-        preview = {}
-    return {**QUERY_PREVIEW_DEFAULTS, **preview}
+    return _substate(state, "query_preview", QUERY_PREVIEW_DEFAULTS)
 
 
 def _search_feedback(state: SearchState) -> dict[str, object]:
     """Return search feedback analysis substate with defaults applied."""
 
-    feedback = state.get("search_feedback", {})
-    if not isinstance(feedback, dict):
-        feedback = {}
-    return {**SEARCH_FEEDBACK_DEFAULTS, **feedback}
+    return _substate(state, "search_feedback", SEARCH_FEEDBACK_DEFAULTS)
 
 
 def _search_filters(state: SearchState) -> dict[str, object]:
     """Return semantic filter substate with defaults applied."""
 
-    filters = state.get("search_filters", {})
-    if not isinstance(filters, dict):
-        filters = {}
-    return {**SEARCH_FILTERS_DEFAULTS, **filters}
+    return _substate(state, "search_filters", SEARCH_FILTERS_DEFAULTS)
 
 
 def set_query_enrichment(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with query enrichment updates applied."""
 
-    new_state: SearchState = dict(state)
-    new_state["query_enrichment"] = {**_query_enrichment(state), **updates}
-    return new_state
+    return _set_substate(state, "query_enrichment", QUERY_ENRICHMENT_DEFAULTS, **updates)
 
 
 def set_query_preview(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with query preview updates applied."""
 
-    new_state: SearchState = dict(state)
-    new_state["query_preview"] = {**_query_preview(state), **updates}
-    return new_state
+    return _set_substate(state, "query_preview", QUERY_PREVIEW_DEFAULTS, **updates)
 
 
 def set_paper_feedback(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with paper feedback updates applied."""
 
-    new_state: SearchState = dict(state)
-    new_state["paper_feedback"] = {**_paper_feedback(state), **updates}
-    return new_state
+    return _set_substate(state, "paper_feedback", PAPER_FEEDBACK_DEFAULTS, **updates)
 
 
 def set_search_feedback(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with search feedback analysis updates applied."""
 
-    new_state: SearchState = dict(state)
-    new_state["search_feedback"] = {**_search_feedback(state), **updates}
-    return new_state
+    return _set_substate(state, "search_feedback", SEARCH_FEEDBACK_DEFAULTS, **updates)
 
 
 def set_search_filters(state: SearchState, **updates: object) -> SearchState:
     """Return a new state with semantic filter updates applied."""
 
-    new_state: SearchState = dict(state)
-    new_state["search_filters"] = {**_search_filters(state), **updates}
-    return new_state
+    return _set_substate(state, "search_filters", SEARCH_FILTERS_DEFAULTS, **updates)
 
 
 def _state_text(value: object) -> str:
-    if value is None:
-        return ""
-    return " ".join(str(value).split())
+    return clean_text(value)
 
 
 def _required_text(value: object, key: str) -> str:

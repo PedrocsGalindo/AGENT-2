@@ -1,7 +1,5 @@
 """Search planning and provider search nodes."""
 
-import re
-
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph.nodes.context_nodes import (
     _context,
@@ -13,7 +11,12 @@ from academic_explorer_mvp.services.search_service import SearchService
 
 from academic_explorer_mvp.services.deduplicator import PaperDeduplicator
 from academic_explorer_mvp.services.normalizer import PaperNormalizer
-from academic_explorer_mvp.services.ranker import PaperRanker
+from academic_explorer_mvp.utils.text import clean_text, find_constraint_hits
+from academic_explorer_mvp.utils.validation import (
+    force_reject_if_needed,
+    validation_counts,
+    validation_sort_key,
+)
 
 
 def plan_filters(state: SearchState, planner: QueryPlanner) -> SearchState:
@@ -155,7 +158,7 @@ def validate_papers(
 
         validated.append(_apply_negative_constraints(item, negative_constraints))
 
-    validated = sorted(validated, key=_validation_sort_key)
+    validated = sorted(validated, key=validation_sort_key)
 
     relevant = [item for item in validated if item.get("decision") == "include"]
     excluded = [item for item in validated if item.get("decision") == "exclude"]
@@ -174,7 +177,7 @@ def validate_papers(
     new_state["validated_papers"] = validated
     new_state["relevant_papers"] = relevant
     new_state["excluded_papers"] = excluded
-    new_state["validation_counts"] = _validation_counts(
+    new_state["validation_counts"] = validation_counts(
         validated=validated,
         relevant=relevant,
         excluded=excluded,
@@ -261,7 +264,7 @@ def judge_paper_validations(
                 )
             )
 
-    judged = sorted(judged, key=_validation_sort_key)
+    judged = sorted(judged, key=validation_sort_key)
     relevant = [item for item in judged if item.get("decision") == "include"]
     excluded = [item for item in judged if item.get("decision") == "exclude"]
     new_ids = set(state.get("last_new_paper_ids", []))
@@ -284,7 +287,7 @@ def judge_paper_validations(
     new_state["validated_papers"] = judged
     new_state["relevant_papers"] = relevant
     new_state["excluded_papers"] = excluded
-    new_state["validation_counts"] = _validation_counts(
+    new_state["validation_counts"] = validation_counts(
         validated=judged,
         relevant=relevant,
         excluded=excluded,
@@ -344,11 +347,11 @@ def _apply_validation_judgment(
             or "The judge did not provide a reason."
         )
 
-    if violates_negative_constraints:
-        corrected_relevance = "reject"
-        corrected_decision = "exclude"
-    if corrected_relevance == "reject":
-        corrected_decision = "exclude"
+    corrected_relevance, corrected_decision = force_reject_if_needed(
+        corrected_relevance,
+        corrected_decision,
+        violates_negative_constraints=violates_negative_constraints,
+    )
 
     correction_applied = (
         not validation_is_correct
@@ -398,36 +401,6 @@ def _short_title(title: str, max_length: int = 90) -> str:
     return clean[: max_length - 3].rstrip() + "..."
 
 
-def _validation_counts(
-    validated: list[dict[str, object]],
-    relevant: list[dict[str, object]],
-    excluded: list[dict[str, object]],
-    new_useful_count: int,
-) -> dict[str, int]:
-    counts = {
-        "total": len(validated),
-        "included": len(relevant),
-        "excluded": len(excluded),
-        "new_useful": new_useful_count,
-        "high": 0,
-        "medium": 0,
-        "low": 0,
-        "reject": 0,
-    }
-    for item in validated:
-        relevance = str(item.get("relevance") or "").lower()
-        if relevance in {"high", "medium", "low", "reject"}:
-            counts[relevance] += 1
-    return counts
-
-
-def _validation_sort_key(item: dict[str, object]) -> tuple[int, int]:
-    relevance_order = {"high": 0, "medium": 1, "low": 2, "reject": 3}
-    paper = item.get("paper")
-    year = getattr(paper, "year", None) or 0
-    return (relevance_order.get(str(item.get("relevance")), 3), -year)
-
-
 def _list_values(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
@@ -436,7 +409,7 @@ def _apply_negative_constraints(
     item: dict[str, object],
     negative_constraints: list[object],
 ) -> dict[str, object]:
-    hits = _negative_hits(item.get("paper"), negative_constraints)
+    hits = find_constraint_hits(_paper_text(item.get("paper")), negative_constraints)
     if not hits:
         return item
 
@@ -449,24 +422,9 @@ def _apply_negative_constraints(
     return new_item
 
 
-def _negative_hits(paper: object, constraints: list[object]) -> list[str]:
-    title = str(getattr(paper, "title", "") or "").lower()
-    abstract = str(getattr(paper, "abstract", "") or "").lower()
-    text = f"{title}\n{abstract}"
-    normalized_text = " ".join(re.findall(r"[a-z0-9]+", text))
-    hits: list[str] = []
-    seen: set[str] = set()
 
-    for constraint in constraints:
-        label = " ".join(str(constraint).split())
-        normalized_constraint = " ".join(re.findall(r"[a-z0-9]+", label.lower()))
-        if not normalized_constraint or normalized_constraint in seen:
-            continue
-        if " " in normalized_constraint:
-            matched = normalized_constraint in normalized_text
-        else:
-            matched = re.search(rf"\b{re.escape(normalized_constraint)}\b", normalized_text)
-        if matched:
-            seen.add(normalized_constraint)
-            hits.append(label)
-    return hits
+
+def _paper_text(paper: object) -> str:
+    title = clean_text(getattr(paper, "title", ""))
+    abstract = clean_text(getattr(paper, "abstract", ""))
+    return f"{title}\n{abstract}"

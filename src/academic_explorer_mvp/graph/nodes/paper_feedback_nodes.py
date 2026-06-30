@@ -12,6 +12,7 @@ from academic_explorer_mvp.graph.nodes.context_nodes import (
     set_search_feedback,
 )
 from academic_explorer_mvp.services.query_planner import QueryPlanner
+from academic_explorer_mvp.utils.validation import relevance_label, validation_counts_from_state
 
 
 REJECTED_PAPERS_PREVIEW_LIMIT = 10
@@ -193,7 +194,7 @@ def _build_feedback_message(state: SearchState) -> str:
         source = getattr(paper, "source", None) or "fonte desconhecida"
         url = getattr(paper, "url", None) or "sem URL"
         corrected_relevance = _state_text(item.get("corrected_relevance"))
-        relevance = _relevance_label(
+        relevance = relevance_label(
             corrected_relevance or _state_text(item.get("relevance"))
         )
         use_judge_reason = bool(item.get("judge_correction_applied")) or (
@@ -236,7 +237,7 @@ def _build_feedback_message(state: SearchState) -> str:
             title = getattr(paper, "title", "titulo desconhecido")
             corrected_relevance = _state_text(item.get("corrected_relevance"))
             relevance = corrected_relevance or _state_text(item.get("relevance")) or "reject"
-            relevance_label = (
+            label_title = (
                 "Relevancia corrigida" if corrected_relevance else "Relevancia"
             )
             reason = (
@@ -247,7 +248,7 @@ def _build_feedback_message(state: SearchState) -> str:
             lines.extend(
                 [
                     f"  - {title}",
-                    f"    {relevance_label}: {_relevance_label(relevance)}",
+                    f"    {label_title}: {relevance_label(relevance)}",
                     f"    Motivo: {reason}",
                     "",
                 ]
@@ -295,7 +296,7 @@ def _append_filter_list(lines: list[str], label: str, values: object) -> None:
 
 
 def _append_validation_summary(lines: list[str], state: SearchState) -> None:
-    counts = _validation_counts_from_state(state)
+    counts = validation_counts_from_state(state)
     lines.extend(
         [
             "Resumo da validação:",
@@ -313,46 +314,3 @@ def _append_validation_summary(lines: list[str], state: SearchState) -> None:
         ]
     )
 
-
-def _validation_counts_from_state(state: SearchState) -> dict[str, int]:
-    counts = state.get("validation_counts")
-    if isinstance(counts, dict) and counts:
-        return {
-            "total": int(counts.get("total") or 0),
-            "included": int(counts.get("included") or 0),
-            "excluded": int(counts.get("excluded") or 0),
-            "new_useful": int(counts.get("new_useful") or 0),
-            "high": int(counts.get("high") or 0),
-            "medium": int(counts.get("medium") or 0),
-            "low": int(counts.get("low") or 0),
-            "reject": int(counts.get("reject") or 0),
-        }
-
-    validated = state.get("validated_papers", [])
-    relevance_counts = _count_relevances(validated)
-    return {
-        "total": len(validated),
-        "included": len(state.get("relevant_papers", [])),
-        "excluded": len(state.get("excluded_papers", [])),
-        "new_useful": int(state.get("last_new_useful_count", 0) or 0),
-        **relevance_counts,
-    }
-
-
-def _count_relevances(validated_papers: list[dict[str, object]]) -> dict[str, int]:
-    counts = {"high": 0, "medium": 0, "low": 0, "reject": 0}
-    for item in validated_papers:
-        relevance = _state_text(item.get("relevance")).lower()
-        if relevance in counts:
-            counts[relevance] += 1
-    return counts
-
-
-def _relevance_label(relevance: str) -> str:
-    labels = {
-        "high": "alta",
-        "medium": "media",
-        "low": "baixa",
-        "reject": "rejeitada",
-    }
-    return labels.get(relevance, relevance or "desconhecida")

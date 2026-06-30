@@ -7,6 +7,8 @@ from academic_explorer_mvp.config import load_config
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph.workflow import run_interactive_graph
+from academic_explorer_mvp.utils.text import clean_text
+from academic_explorer_mvp.utils.validation import relevance_label, validation_counts_from_state
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,7 +89,7 @@ def print_summary(state: SearchState) -> None:
         if paper is None:
             continue
         print(f"\n{position}. {paper.title}")
-        print(f"   Relevancia: {_relevance_label(str(item.get('relevance') or ''))}")
+        print(f"   Relevancia: {relevance_label(str(item.get('relevance') or ''))}")
         print(f"   Ano: {paper.year or 'desconhecido'}")
         print(f"   Fonte: {paper.source}")
         print(f"   URL: {paper.url or 'sem URL'}")
@@ -97,20 +99,10 @@ def print_summary(state: SearchState) -> None:
             print(f"   Util para: {useful_for}")
 
 
-def _relevance_label(relevance: str) -> str:
-    labels = {
-        "high": "alta",
-        "medium": "media",
-        "low": "baixa",
-        "reject": "rejeitada",
-    }
-    return labels.get(relevance, relevance or "desconhecida")
-
-
 def _print_filter_list(label: str, values: object) -> None:
     items = []
     if isinstance(values, list):
-        items = [_clean_text(value) for value in values]
+        items = [clean_text(value) for value in values]
         items = [value for value in items if value]
 
     if not items:
@@ -131,7 +123,7 @@ def _print_search_filters(state: SearchState) -> None:
         search_filters = {}
 
     print("\nCritérios de validação usados:")
-    primary_intent = _clean_text(search_filters.get("primary_intent")) or "nenhum"
+    primary_intent = clean_text(search_filters.get("primary_intent")) or "nenhum"
     print("  Intenção principal:")
     print(f"    {primary_intent}")
     print()
@@ -144,7 +136,7 @@ def _print_search_filters(state: SearchState) -> None:
 
 
 def _print_validation_summary(state: SearchState) -> None:
-    counts = _validation_counts_from_state(state)
+    counts = validation_counts_from_state(state)
     print("\nResumo da validação:")
     print(f"  Total avaliados: {counts['total']}")
     print(f"  Incluídos: {counts['included']}")
@@ -157,44 +149,6 @@ def _print_validation_summary(state: SearchState) -> None:
     print(f"  Rejeitada: {counts['reject']}")
 
 
-def _validation_counts_from_state(state: SearchState) -> dict[str, int]:
-    counts = state.get("validation_counts")
-    if isinstance(counts, dict) and counts:
-        return {
-            "total": int(counts.get("total") or 0),
-            "included": int(counts.get("included") or 0),
-            "excluded": int(counts.get("excluded") or 0),
-            "new_useful": int(counts.get("new_useful") or 0),
-            "high": int(counts.get("high") or 0),
-            "medium": int(counts.get("medium") or 0),
-            "low": int(counts.get("low") or 0),
-            "reject": int(counts.get("reject") or 0),
-        }
-
-    validated = state.get("validated_papers", [])
-    relevance_counts = _count_relevances(validated)
-    return {
-        "total": len(validated),
-        "included": len(state.get("relevant_papers", [])),
-        "excluded": len(state.get("excluded_papers", [])),
-        "new_useful": int(state.get("last_new_useful_count", 0) or 0),
-        **relevance_counts,
-    }
-
-
-def _count_relevances(validated_papers: list[dict[str, object]]) -> dict[str, int]:
-    counts = {"high": 0, "medium": 0, "low": 0, "reject": 0}
-    for item in validated_papers:
-        relevance = _clean_text(item.get("relevance")).lower()
-        if relevance in counts:
-            counts[relevance] += 1
-    return counts
-
-
-def _clean_text(value: object) -> str:
-    if value is None:
-        return ""
-    return " ".join(str(value).split())
 
 if __name__ == "__main__":
     main()

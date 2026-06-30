@@ -132,12 +132,11 @@ def build_context_question_prompt(user_query: str, reason: str) -> PromptSpec:
 Você está preparando uma busca de artigos acadêmicos.
 
 Tarefa:
-Gere exatamente uma pergunta útil de esclarecimento para a consulta atual do usuário.
+Gere exatamente uma pergunta de esclarecimento para ajudar o usuário a escolher a direção da busca acadêmica.
 
-Importante:
-- Não reavalie se a consulta tem contexto suficiente; essa avaliação já foi feita.
-- Faça somente uma pergunta.
-- A pergunta deve ajudar a identificar a direção acadêmica pretendida.
+A pergunta NÃO deve testar conhecimento do usuário.
+A pergunta NÃO deve pedir uma explicação conceitual.
+A pergunta deve oferecer caminhos possíveis para a busca.
 
 Consulta atual:
 {user_query}
@@ -146,49 +145,92 @@ Justificativa da avaliação anterior:
 {reason}
 
 Regra de idioma:
-- question deve ser em português porque será mostrado ao usuário.
-- reason deve ser em português para facilitar depuração.
+- "question" deve ser em português porque será mostrado ao usuário.
+- "reason" deve ser em português para facilitar depuração.
 - Mantenha as chaves JSON em inglês.
 
-Regras:
-- Construa a pergunta com base na consulta real e no contexto ausente descrito em reason.
-- Se houver ambiguidade, mencione a ambiguidade e ofereça significados prováveis.
-- Se houver amplitude excessiva, pergunte se o usuário deseja direção geral ou foco específico.
-- Não copie exemplos literalmente.
-- Não faça perguntas genéricas como "o que você quer saber?".
-- Não adicione opções não relacionadas.
-- Não pergunte sobre uma modalidade se ela já estiver clara; pergunte sobre o foco.
+Objetivo da pergunta:
+A pergunta deve transformar uma consulta vaga, ampla ou ambígua em uma intenção de busca mais clara.
 
-Dimensões úteis quando relevantes:
-direção geral, método, família de modelos, aplicação, domínio, modalidade, dataset, fonte de dados, métrica, comparação, população, doença, tarefa, tipo de sistema, implantação, avaliação ou foco teórico/prático.
+Regras principais:
+- Faça exatamente uma pergunta.
+- Use a consulta real do usuário como base.
+- Use a justificativa anterior apenas para entender o que falta.
+- Não reavalie se a consulta tem contexto suficiente.
+- Não explique conceitos para o usuário.
+- Não pergunte "qual é a diferença entre X e Y".
+- Não pergunte "o que significa X".
+- Não peça para o usuário definir termos técnicos.
+- Não peça uma resposta longa.
+- Ofereça opções prováveis e fáceis de escolher.
+- Quando fizer sentido, inclua a opção "visão geral".
+- A pergunta deve soar natural para alguém que talvez não domine a área.
 
-Nunca pergunte:
+Como agir por tipo de problema:
+
+1. Consulta vaga ou muito ampla:
+Faça uma pergunta simples, com linguagem acessível, oferecendo "visão geral" e alguns focos comuns.
+
+Exemplo de estilo:
+"Você quer uma visão geral sobre o tema ou prefere focar em modelos, aplicações, datasets, métricas ou comparação entre abordagens?"
+
+2. Consulta ambígua:
+Explique rapidamente a ambiguidade e ofereça interpretações prováveis para o usuário escolher.
+
+Exemplo de estilo:
+"O termo X pode ter mais de um sentido: você quer falar de A, B, C ou D?"
+
+3. Consulta com domínio claro, mas foco ausente:
+Preserve o domínio e pergunte sobre o foco da busca.
+
+Exemplo de estilo:
+"Em [domínio], você quer focar em A, B, C, D ou uma visão geral?"
+
+4. Consulta com modalidade clara:
+Não pergunte a modalidade novamente.
+Pergunte sobre modelos, datasets, extração de características, avaliação, aplicação ou visão geral.
+
+5. Consulta técnica com termo difícil:
+Não peça para o usuário explicar o termo.
+Ofereça interpretações acadêmicas prováveis de forma simples.
+
+Nunca faça perguntas deste tipo:
 - Qual aspecto específico você precisa?
 - Pode fornecer mais contexto?
 - O que você quer saber?
 - Esclareça sua consulta.
 - Pode ser mais específico?
+- Qual é a diferença entre X e Y?
+- O que significa X?
+- Como você define X?
+
+Dimensões úteis quando relevantes:
+visão geral, método, família de modelos, aplicação, domínio, modalidade, dataset, fonte de dados, métrica, comparação, população, doença, tarefa, tipo de sistema, implantação, avaliação, revisão teórica ou aplicação prática.
 
 Orientação por tipo de tema:
-- Para prediction/forecasting: métodos, fontes de dados, variável-alvo, horizonte temporal, mercado/domínio, métricas ou direção geral.
-- Para detection/classification: modalidade, tipo de dado, datasets, modelos, extração de características, tempo real, benchmarks, métricas ou direção geral.
-- Para agents: diferencie LLM/VLM agents, software agents, sistemas autônomos, recommendation agents, shopping agents, robótica ou workflows.
-- Para bias: diferencie viés estatístico, viés de dataset, shortcut bias, fairness bias, viés de modelo, viés médico, viés social ou viés de avaliação.
-- Para noise: diferencie label noise, input noise, ruído de aquisição, outliers, ambientes ruidosos ou robustez.
+- Para prediction/forecasting: pergunte sobre métodos, fonte de dados, variável-alvo, horizonte temporal, mercado/domínio, métricas, comparação ou visão geral.
+- Para detection/classification: pergunte sobre tipo de dado, datasets, modelos, extração de características, tempo real, benchmarks, métricas, aplicação ou visão geral.
+- Para agents: diferencie agentes com LLM/VLM, agentes de software, sistemas autônomos, recommendation agents, shopping agents, robótica, workflows ou visão geral.
+- Para bias: diferencie viés de dataset, viés de modelo, shortcut bias, fairness bias, viés médico/clínico, viés social, viés de avaliação ou visão geral.
+- Para noise: diferencie label noise, input noise, ruído de aquisição, outliers, ambientes ruidosos, robustez ou visão geral.
 
 Exemplos:
 
 Consulta: automated shopping
 Saída:
-{{"question":"O termo \"automated shopping\" ficou ambíguo: você quer falar de agentes de compra com IA, automação em e-commerce, checkout automático, sistemas de recomendação ou operações de varejo?","reason":"A pergunta expõe a ambiguidade e oferece interpretações acadêmicas prováveis."}}
+{{"question":"O termo \"automated shopping\" pode apontar para temas diferentes: você quer buscar artigos sobre agentes de compra com IA, automação em e-commerce, checkout automático, sistemas de recomendação, operações de varejo ou uma visão geral?","reason":"A pergunta mostra a ambiguidade do termo e oferece direções acadêmicas prováveis para a busca."}}
 
 Consulta: audio violence detection
 Saída:
-{{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou quer focar em algo mais específico, como modelos, datasets, extração de características, métricas ou detecção em tempo real?","reason":"A pergunta preserva a modalidade de áudio e solicita o foco de pesquisa que ainda está ausente."}}
+{{"question":"Você quer uma visão geral sobre detecção de violência por áudio ou prefere focar em modelos, datasets, extração de características, métricas, benchmarks ou detecção em tempo real?","reason":"A pergunta mantém a modalidade de áudio já informada e pede apenas o foco que ainda está ausente."}}
 
 Consulta: noisy data in medical image classification
 Saída:
-{{"question":"Em dados ruidosos para classificação de imagens médicas, você quer focar em rótulos ruidosos, ruído na imagem, ruído de aquisição, outliers, robustez do modelo ou uma visão geral?","reason":"A pergunta diferencia os sentidos técnicos possíveis de dados ruidosos no tema do usuário."}}
+{{"question":"Em classificação de imagens médicas com dados ruidosos, você quer uma visão geral ou prefere focar em rótulos incorretos, ruído na imagem, ruído de aquisição, outliers ou robustez dos modelos?","reason":"A pergunta diferencia sentidos técnicos possíveis de dados ruidosos sem exigir que o usuário explique o conceito."}}
+
+Consulta: bias in medical data analysis
+Saída:
+{{"question":"Em viés na análise de dados médicos, você quer uma visão geral ou prefere focar em viés nos dados, viés dos modelos, fairness entre grupos de pacientes, shortcut bias, viés de avaliação ou impactos clínicos?","reason":"A pergunta oferece caminhos de busca relacionados ao tema sem pedir que o usuário explique diferenças conceituais."}}
 
 Formato JSON obrigatório:
 {{"question":"uma pergunta de esclarecimento com opções específicas do tema","reason":"justificativa curta em português"}}

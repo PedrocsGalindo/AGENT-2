@@ -4,6 +4,11 @@ from academic_explorer_mvp.config import AppConfig
 from academic_explorer_mvp.domain.context import SearchContext
 from academic_explorer_mvp.domain.state import SearchState
 from academic_explorer_mvp.graph import nodes
+from academic_explorer_mvp.graph.nodes.context_nodes import (
+    set_paper_feedback,
+    set_query_enrichment,
+    set_query_preview,
+)
 from academic_explorer_mvp.llm.local_model import LocalModel
 from academic_explorer_mvp.providers.openalex import OpenAlexProvider
 from academic_explorer_mvp.providers.semantic_scholar import SemanticScholarProvider
@@ -162,7 +167,7 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             while not answer:
                 answer = input("Digite uma resposta: ").strip()
 
-            state = _update_query_enrichment(
+            state = set_query_enrichment(
                 state,
                 answer=answer,
             )
@@ -183,7 +188,7 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             while not answer:
                 answer = input('Responda "sim" ou escreva uma versão melhor: ').strip()
 
-            state = _update_query_enrichment(
+            state = set_query_enrichment(
                 state,
                 confirmation_answer=answer,
             )
@@ -208,7 +213,7 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             else:
                 print("  Nenhuma query planejada.")
 
-            state = _update_query_preview(
+            state = set_query_preview(
                 state,
                 stage="shown",
             )
@@ -236,7 +241,7 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
                     'Responda "sim" ou escreva uma critica/direcionamento: '
                 ).strip()
 
-            state = _update_paper_feedback(
+            state = set_paper_feedback(
                 state,
                 pending_answer=answer,
             )
@@ -245,38 +250,3 @@ def run_interactive_graph(context: SearchContext, config: AppConfig) -> SearchSt
             continue
 
         return state
-    
-def _update_query_enrichment(state: SearchState, **updates: object) -> SearchState:
-    """Return a copied state with updated query enrichment data."""
-
-    new_state: SearchState = dict(state)
-
-    enrichment = dict(new_state.get("query_enrichment", {}) or {})
-    enrichment.update(updates)
-
-    new_state["query_enrichment"] = enrichment
-    return new_state
-
-
-def _update_query_preview(state: SearchState, **updates: object) -> SearchState:
-    """Return a copied state with updated query preview data."""
-
-    new_state: SearchState = dict(state)
-
-    preview = dict(new_state.get("query_preview", {}) or {})
-    preview.update(updates)
-
-    new_state["query_preview"] = preview
-    return new_state
-
-
-def _update_paper_feedback(state: SearchState, **updates: object) -> SearchState:
-    """Return a copied state with updated paper feedback data."""
-
-    new_state: SearchState = dict(state)
-
-    feedback = dict(new_state.get("paper_feedback", {}) or {})
-    feedback.update(updates)
-
-    new_state["paper_feedback"] = feedback
-    return new_state
